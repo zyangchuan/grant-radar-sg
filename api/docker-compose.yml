@@ -1,0 +1,11 @@
+services:
+  grant-query:
+    build:
+      context: ./grant-query
+      dockerfile: Dockerfile
+    # 1. MOUNT THE VOLUME: [host path]:[container path]
+    volumes:
+      - ./grant-query:/app
+    env_file: .env
+    ports:
+      - "8000:8000"

@@ -1,0 +1,17 @@
+name: grant_query
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - requests
+    - sentence-transformers
+    - langchain
+    - langchain-openai
+    - langchain-huggingface
+    - langchain-chroma
+    - langchain-community
+    - chromadb
+    - python-dotenv  # For managing API keys securely
