@@ -10,7 +10,7 @@ import json
 import asyncio
 
 # Import our AI service
-from grant_service import find_and_evaluate_grants_with_progress, get_chroma_client, COLLECTION_NAME
+from grant_service import find_and_evaluate_grants, find_and_evaluate_grants_streaming, get_chroma_client, COLLECTION_NAME
 
 # ==========================================
 # PYDANTIC MODELS
@@ -24,7 +24,6 @@ class ProjectRequirements(BaseModel):
 
 class GrantEvaluation(BaseModel):
     relevance_score: int
-    sustainability_score: int
     overall_score: int
     recommendation: str
     strengths: List[str]
@@ -134,56 +133,114 @@ async def search_grants_stream(requirements: ProjectRequirements):
         try:
             req_dict = requirements.model_dump()
             
-            # Step 1: Initialization
-            yield f"data: {json.dumps({'status': 'initializing', 'message': 'Connecting to AI agents...', 'progress': 10})}\n\n"
-            await asyncio.sleep(0.1)
-            
-            # Step 2: Understanding requirements
-            yield f"data: {json.dumps({'status': 'analyzing', 'message': 'Analyzing project requirements...', 'progress': 20})}\n\n"
-            await asyncio.sleep(0.1)
-            
-            # Step 3: Searching
-            yield f"data: {json.dumps({'status': 'searching', 'message': 'Searching grant database...', 'progress': 40})}\n\n"
-            await asyncio.sleep(0.5)
-            
-            # Step 4: Finding candidates
-            yield f"data: {json.dumps({'status': 'searching', 'message': 'Found candidate grants, evaluating relevance...', 'progress': 60})}\n\n"
-            
-            # Run the actual AI search (this takes the longest)
-            result = await asyncio.to_thread(find_and_evaluate_grants_with_progress, req_dict)
-            
-            # Step 5: Evaluating
-            yield f"data: {json.dumps({'status': 'evaluating', 'message': 'Scoring grants against your criteria...', 'progress': 80})}\n\n"
-            await asyncio.sleep(0.5)
-            
-            # Step 6: Finalizing
-            yield f"data: {json.dumps({'status': 'finalizing', 'message': 'Ranking results...', 'progress': 90})}\n\n"
-            await asyncio.sleep(0.2)
-            
-            # Parse response
-            if "```json" in result:
-                result = result.split("```json")[1].split("```")[0].strip()
-            elif "```" in result:
-                result = result.split("```")[1].split("```")[0].strip()
-            
-            grants_data = json.loads(result)
-            
-            # Step 7: Complete
+            # Initial progress
             response = {
-                'status': 'complete',
-                'message': 'Search complete!',
-                'progress': 100,
-                'data': {
-                    'success': True,
-                    'grants': grants_data,
-                    'total_found': len(grants_data)
-                }
+                'type': 'progress',
+                'stage': 'initializing',
+                'message': 'Connecting to AI agents...',
+                'progress': 5,
+                'details': {}
             }
             yield f"data: {json.dumps(response)}\n\n"
+            await asyncio.sleep(0.1)
+            
+            progress_counter = 10
+            
+            # Generator function that will run in thread
+            def run_streaming_generator():
+                for update in find_and_evaluate_grants_streaming(req_dict):
+                    yield update
+            
+            # Process updates as they come
+            loop = asyncio.get_event_loop()
+            executor = loop.run_in_executor
+            
+            # We need a different approach - use a queue
+            import queue
+            import threading
+            
+            update_queue = queue.Queue()
+            
+            def run_in_thread():
+                try:
+                    for update in find_and_evaluate_grants_streaming(req_dict):
+                        update_queue.put(update)
+                    update_queue.put(None)  # Signal completion
+                except Exception as e:
+                    update_queue.put({"type": "error", "error": str(e)})
+            
+            # Start the AI process in background thread
+            thread = threading.Thread(target=run_in_thread)
+            thread.start()
+            
+            # Stream updates as they arrive
+            while True:
+                try:
+                    # Non-blocking get with timeout
+                    update = update_queue.get(timeout=0.1)
+                    
+                    if update is None:
+                        break
+                    
+                    if update['type'] == 'error':
+                        error_response = {
+                            'type': 'error',
+                            'stage': 'error',
+                            'message': f'Search failed: {update["error"]}',
+                            'progress': 0
+                        }
+                        yield f"data: {json.dumps(error_response)}\n\n"
+                        break
+                    
+                    elif update['type'] == 'progress':
+                        progress_counter = min(progress_counter + 10, 90)
+                        data = update['data']
+                        response = {
+                            'type': 'progress',
+                            'stage': data.get('stage', 'processing'),
+                            'message': data.get('message', ''),
+                            'progress': progress_counter,
+                            'details': data.get('details', {})
+                        }
+                        yield f"data: {json.dumps(response)}\n\n"
+                        
+                    elif update['type'] == 'result':
+                        # Parse final result
+                        result = update['data']
+                        
+                        if "```json" in result:
+                            result = result.split("```json")[1].split("```")[0].strip()
+                        elif "```" in result:
+                            result = result.split("```")[1].split("```")[0].strip()
+                        
+                        grants_data = json.loads(result)
+                        
+                        # Final response
+                        response = {
+                            'type': 'complete',
+                            'stage': 'complete',
+                            'message': 'Search complete!',
+                            'progress': 100,
+                            'data': {
+                                'success': True,
+                                'grants': grants_data,
+                                'total_found': len(grants_data)
+                            }
+                        }
+                        yield f"data: {json.dumps(response)}\n\n"
+                        
+                except queue.Empty:
+                    # No update available, just wait
+                    await asyncio.sleep(0.1)
+                    continue
+            
+            # Wait for thread to complete
+            thread.join(timeout=60)
             
         except Exception as e:
             error_response = {
-                'status': 'error',
+                'type': 'error',
+                'stage': 'error',
                 'message': f'Search failed: {str(e)}',
                 'progress': 0
             }
@@ -195,6 +252,7 @@ async def search_grants_stream(requirements: ProjectRequirements):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         }
     )
 

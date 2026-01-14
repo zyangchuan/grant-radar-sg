@@ -147,10 +147,53 @@
             margin-bottom: 10px;
         }
         
+        .grant-card h3 a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .grant-card h3 a:hover {
+            text-decoration: underline;
+        }
+        
         .grant-meta {
             color: #666;
             font-size: 14px;
             margin-bottom: 15px;
+        }
+        
+        .grant-description {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            line-height: 1.6;
+            color: #555;
+        }
+        
+        .grant-tags {
+            margin: 10px 0;
+        }
+        
+        .tag {
+            display: inline-block;
+            background: #e8eaf6;
+            color: #5e35b1;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .match-summary {
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+            padding: 12px;
+            margin: 15px 0;
+            border-radius: 4px;
+            font-style: italic;
+            color: #1565c0;
         }
         
         .score-badge {
@@ -178,25 +221,81 @@
         }
         
         .strengths, .concerns {
-            margin-top: 10px;
+            margin-top: 15px;
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
         }
         
         .strengths h4, .concerns h4 {
             font-size: 14px;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
+            font-weight: 600;
         }
         
         .strengths ul, .concerns ul {
             margin-left: 20px;
             font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .strengths ul li, .concerns ul li {
+            margin-bottom: 6px;
         }
         
         .strengths {
-            color: #155724;
+            border-left: 3px solid #4caf50;
+        }
+        
+        .strengths h4 {
+            color: #2e7d32;
         }
         
         .concerns {
-            color: #721c24;
+            border-left: 3px solid #ff9800;
+        }
+        
+        .concerns h4 {
+            color: #e65100;
+        }
+        
+        .requirements, .action-items {
+            margin-top: 15px;
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+        }
+        
+        .requirements h4, .action-items h4 {
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .requirements {
+            border-left: 3px solid #2196f3;
+        }
+        
+        .requirements h4 {
+            color: #1565c0;
+        }
+        
+        .action-items {
+            border-left: 3px solid #9c27b0;
+        }
+        
+        .action-items h4 {
+            color: #6a1b9a;
+        }
+        
+        .requirements ul, .action-items ul {
+            margin-left: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .requirements ul li, .action-items ul li {
+            margin-bottom: 6px;
         }
         
         .error {
@@ -319,10 +418,24 @@
             // Update progress bar
             progressFill.style.width = data.progress + '%';
             progressFill.textContent = data.progress + '%';
-            progressMessage.textContent = data.message;
+            
+            // Show detailed message with emoji based on stage
+            let emoji = '⚙️';
+            if (data.stage === 'searching') emoji = '🔍';
+            else if (data.stage === 'evaluating') emoji = '📊';
+            else if (data.stage === 'coordinating') emoji = '🤖';
+            else if (data.stage === 'finalizing') emoji = '✨';
+            else if (data.stage === 'complete') emoji = '✅';
+            
+            progressMessage.textContent = emoji + ' ' + data.message;
+            
+            // Show grant name if available
+            if (data.details && data.details.grant) {
+                progressMessage.innerHTML = emoji + ' ' + data.message + '<br><small style="color: #999;">Grant: ' + data.details.grant + '</small>';
+            }
             
             // Handle completion
-            if (data.status === 'complete') {
+            if (data.type === 'complete' || data.stage === 'complete') {
                 setTimeout(() => {
                     progressContainer.classList.remove('active');
                     displayResults(data.data);
@@ -330,7 +443,7 @@
             }
             
             // Handle error
-            if (data.status === 'error') {
+            if (data.type === 'error' || data.stage === 'error') {
                 progressContainer.classList.remove('active');
                 resultsDiv.innerHTML = `<div class="error">❌ ${data.message}</div>`;
                 resultsDiv.classList.add('active');
@@ -352,30 +465,69 @@
                 
                 html += `
                     <div class="grant-card">
-                        <h3>${index + 1}. ${grant.grant_name}</h3>
+                        <h3>${index + 1}. <a href="${grant.grant_link}" target="_blank">${grant.grant_name} 🔗</a></h3>
                         <div class="grant-meta">
                             <strong>Agency:</strong> ${grant.agency} | 
-                            <strong>Funding:</strong> $${grant.funding_amount.toLocaleString()}
+                            <strong>Funding:</strong> ${grant.funding_amount.toLocaleString()} |
+                            <strong>Target:</strong> ${grant.target_audience}
                         </div>
+                        
+                        ${grant.categories && grant.categories.length > 0 ? `
+                            <div class="grant-tags">
+                                ${grant.categories.map(cat => `<span class="tag">${cat}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        <div class="grant-description">
+                            <strong>Description:</strong><br>
+                            ${grant.description}
+                        </div>
+                        
                         <div>
                             <span class="${scoreClass} score-badge">Overall: ${score}/100</span>
                             <span class="score-badge">Relevance: ${grant.evaluation.relevance_score}/100</span>
-                            <span class="score-badge">Sustainability: ${grant.evaluation.sustainability_score}/100</span>
+                            <span class="score-badge">${grant.evaluation.recommendation}</span>
                         </div>
-                        <div><strong>Recommendation:</strong> ${grant.evaluation.recommendation}</div>
-                        ${grant.evaluation.strengths.length > 0 ? `
+                        
+                        ${grant.evaluation.match_summary ? `
+                            <div class="match-summary">
+                                <strong>💡 Match Analysis:</strong><br>
+                                ${grant.evaluation.match_summary}
+                            </div>
+                        ` : ''}
+                        
+                        ${grant.evaluation.strengths && grant.evaluation.strengths.length > 0 ? `
                             <div class="strengths">
-                                <h4>💚 Strengths:</h4>
+                                <h4>✅ Strengths</h4>
                                 <ul>
                                     ${grant.evaluation.strengths.map(s => `<li>${s}</li>`).join('')}
                                 </ul>
                             </div>
                         ` : ''}
-                        ${grant.evaluation.concerns.length > 0 ? `
+                        
+                        ${grant.evaluation.concerns && grant.evaluation.concerns.length > 0 ? `
                             <div class="concerns">
-                                <h4>⚠️ Concerns:</h4>
+                                <h4>⚠️ Considerations</h4>
                                 <ul>
                                     ${grant.evaluation.concerns.map(c => `<li>${c}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                        
+                        ${grant.evaluation.key_requirements && grant.evaluation.key_requirements.length > 0 ? `
+                            <div class="requirements">
+                                <h4>📋 Key Requirements</h4>
+                                <ul>
+                                    ${grant.evaluation.key_requirements.map(r => `<li>${r}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                        
+                        ${grant.evaluation.action_items && grant.evaluation.action_items.length > 0 ? `
+                            <div class="action-items">
+                                <h4>🎯 Next Steps</h4>
+                                <ul>
+                                    ${grant.evaluation.action_items.map(a => `<li>${a}</li>`).join('')}
                                 </ul>
                             </div>
                         ` : ''}

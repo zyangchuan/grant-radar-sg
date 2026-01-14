@@ -1,16 +1,15 @@
 """
-grant_service.py - AI Agent Logic for Grant Discovery and Evaluation
+grant_service.py - AI Agent Logic with Streaming Support
 """
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Generator
 
 from langchain_openai import ChatOpenAI
 from langchain.messages import HumanMessage
 from langchain.tools import tool
 from langchain.agents import create_agent
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 import chromadb
 
@@ -31,18 +30,32 @@ chroma_client = chromadb.HttpClient(
     port=CHROMA_PORT
 )
 
-embedding_func = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
 # Initialize Vector Store
 vector_store = Chroma(
     client=chroma_client,
     collection_name=COLLECTION_NAME,
-    embedding_function=embedding_func
 )
 print("[System] ✓ Vector Database Connected.")
 
-# Initialize LLM
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, request_timeout=15)
+# Initialize LLM - use faster model with lower timeout
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, request_timeout=10)  # Reduced from 15 to 10
+
+# Global variable to track streaming progress
+_progress_callback = None
+
+def set_progress_callback(callback):
+    """Set a callback function to receive progress updates"""
+    global _progress_callback
+    _progress_callback = callback
+
+def emit_progress(stage: str, message: str, details: dict = None):
+    """Emit progress update if callback is set"""
+    if _progress_callback:
+        _progress_callback({
+            "stage": stage,
+            "message": message,
+            "details": details or {}
+        })
 
 # ==========================================
 # SEARCH TOOL
@@ -51,13 +64,18 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, request_timeout=15)
 def search_grants_database(query: str) -> str:
     """
     Searches the grants database for relevant schemes based on a natural language query.
-    Returns the top 5 matching grants with their IDs, names, and descriptions.
+    Returns the top 3 matching grants with their IDs, names, and descriptions.
     """
+    emit_progress("searching", f"🔍 Searching database for: '{query}'", {"query": query})
     print(f"\n  >> [Tool Call] Searching DB for: '{query}'")
-    results = vector_store.similarity_search(query, k=5)
+    
+    results = vector_store.similarity_search(query, k=3)  # Reduced from 5 to 3
     
     if not results:
+        emit_progress("searching", "No grants found, trying broader search...")
         return "No grants found matching the query."
+    
+    emit_progress("searching", f"✓ Found {len(results)} candidate grants", {"count": len(results)})
     
     output = []
     for doc in results:
@@ -67,7 +85,7 @@ def search_grants_database(query: str) -> str:
             f"Agency: {doc.metadata['agency_name']}\n"
             f"Funding Amount: ${doc.metadata['funding_amount']}\n"
             f"Categories: {doc.metadata.get('categories', 'N/A')}\n"
-            f"Description: {doc.page_content[:300]}...\n"
+            f"Description: {doc.page_content[:150]}...\n"  # Reduced from 300 to 150
             f"---"
         )
     return "\n".join(output)
@@ -79,36 +97,47 @@ def search_grants_database(query: str) -> str:
 def evaluate_grant_relevance(grant_data: str, requirements: str) -> str:
     """
     Evaluates a single grant against project requirements.
-    Returns a JSON score with relevance, sustainability alignment, and reasoning.
+    Returns a JSON score with relevance and quick reasoning.
     """
-    print(f"\n  >> [Evaluator] Assessing grant relevance...")
+    # Extract grant name for progress message
+    grant_name = "Unknown"
+    if "Name:" in grant_data:
+        grant_name = grant_data.split("Name:")[1].split("\n")[0].strip()
     
-    evaluator_prompt = f"""You are an expert grant evaluator specializing in sustainability initiatives.
+    emit_progress("evaluating", f"📊 Evaluating: {grant_name}", {"grant": grant_name})
+    print(f"\n  >> [Evaluator] Assessing grant relevance for: {grant_name}")
+    
+    # Simplified, faster evaluation prompt
+    evaluator_prompt = f"""You are a grant evaluator. Quickly assess this grant.
 
-GRANT DETAILS:
-{grant_data}
+GRANT: {grant_data}
 
-PROJECT REQUIREMENTS:
-{requirements}
+PROJECT: {requirements}
 
-Evaluate this grant and return ONLY a JSON object with this exact structure:
+Return ONLY this JSON (be quick and direct):
 {{
     "relevance_score": <0-100>,
-    "sustainability_score": <0-100>,
     "overall_score": <0-100>,
-    "strengths": ["list", "of", "strengths"],
-    "concerns": ["list", "of", "concerns"],
-    "recommendation": "HIGHLY_RECOMMENDED | RECOMMENDED | CONDITIONAL | NOT_RECOMMENDED"
+    "strengths": ["top 2 strengths"],
+    "concerns": ["top 1-2 concerns"],
+    "recommendation": "HIGHLY_RECOMMENDED | RECOMMENDED | NOT_RECOMMENDED"
 }}
 
-SCORING CRITERIA:
-- relevance_score: How well the grant matches the project's issue area, scope, and KPIs
-- sustainability_score: How strongly the grant supports environmental sustainability goals
-- overall_score: Weighted average (relevance 60%, sustainability 40%)
-
-Be strict but fair. A score above 70 is excellent, 50-70 is good, below 50 is poor."""
+Score 70+ = excellent match, 50-69 = good match, below 50 = poor match."""
 
     response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+    
+    # Try to extract score for progress update
+    try:
+        result_json = json.loads(response.content.replace("```json", "").replace("```", "").strip())
+        score = result_json.get("overall_score", "?")
+        emit_progress("evaluating", f"✓ Scored {grant_name}: {score}/100", {
+            "grant": grant_name,
+            "score": score
+        })
+    except:
+        emit_progress("evaluating", f"✓ Completed evaluation for {grant_name}")
+    
     return response.content
 
 # ==========================================
@@ -117,16 +146,15 @@ Be strict but fair. A score above 70 is excellent, 50-70 is good, below 50 is po
 search_agent_prompt = """You are the Search Specialist Agent for grant discovery.
 
 YOUR ROLE:
-1. Analyze the project requirements provided
-2. Formulate 1-2 targeted search queries to find relevant grants
-3. Use the search_grants_database tool to retrieve candidates
-4. Return the raw results as a structured list
+1. Analyze the project requirements
+2. Formulate ONE targeted search query (not multiple queries)
+3. Use search_grants_database tool ONCE
+4. Return the results immediately
 
 IMPORTANT:
-- Extract key terms from: issue_area, scope_of_grant, and funding_quantum
-- Look for grants that mention sustainability, environment, or related terms
-- Return ALL unique grants found (no duplicates)
-- Format output as a simple list with grant IDs and basic info"""
+- Create a single, focused search query using key terms from issue_area and scope
+- Do NOT make multiple searches
+- Return ALL grants found"""
 
 search_agent = create_agent(
     model=llm,
@@ -140,10 +168,14 @@ search_agent = create_agent(
 @tool
 def call_search_agent(requirements: str) -> str:
     """Invokes the search agent to find relevant grants based on project requirements."""
+    emit_progress("coordinating", "🤖 Activating Search Agent...", {"agent": "search"})
     print("\n[Coordinator] Calling Search Agent...")
+    
     response = search_agent.invoke({
         "messages": [HumanMessage(content=f"Find grants for these requirements:\n{requirements}")]
     })
+    
+    emit_progress("coordinating", "✓ Search Agent completed", {"agent": "search"})
     return response["messages"][-1].content
 
 @tool
@@ -151,14 +183,12 @@ def call_evaluator(grant_data: str, requirements: str) -> str:
     """Evaluates a grant's relevance and sustainability alignment."""
     return evaluate_grant_relevance.invoke({"grant_data": grant_data, "requirements": requirements})
 
-coordinator_prompt = """You are the Coordinator Agent for an intelligent Grant Retrieval System.
+coordinator_prompt = """You are the Coordinator Agent for grant retrieval.
 
-YOUR WORKFLOW (MUST FOLLOW IN ORDER):
-1. UNDERSTAND: Parse the user's project requirements (JSON format)
-2. SEARCH: Call the search agent to find candidate grants
-3. EVALUATE: For each grant found, call the evaluator to assess quality
-4. RANK: Sort grants by overall_score (highest first)
-5. RETURN: Output the top 3 grants as a JSON array with evaluation scores
+WORKFLOW:
+1. Call search agent to find grants (ONCE)
+2. Evaluate each grant found (up to 3 grants)
+3. Return top 2 grants as JSON
 
 OUTPUT FORMAT:
 [
@@ -169,7 +199,6 @@ OUTPUT FORMAT:
         "funding_amount": ...,
         "evaluation": {
             "relevance_score": ...,
-            "sustainability_score": ...,
             "overall_score": ...,
             "recommendation": "...",
             "strengths": [...],
@@ -178,11 +207,10 @@ OUTPUT FORMAT:
     }
 ]
 
-CRITICAL RULES:
-- Only return grants with overall_score >= 50
-- Maximum 3 grants in final output
-- Ensure all grants are unique (no duplicates)
-- Include full evaluation details for transparency"""
+RULES:
+- Return top 2 grants only
+- Include grants with overall_score >= 40 (lowered threshold)
+- Be quick and efficient"""
 
 coordinator_agent = create_agent(
     model=llm,
@@ -191,7 +219,7 @@ coordinator_agent = create_agent(
 )
 
 # ==========================================
-# PUBLIC API FUNCTION
+# PUBLIC API FUNCTIONS
 # ==========================================
 def find_and_evaluate_grants(project_requirements: dict) -> str:
     """
@@ -208,11 +236,15 @@ def find_and_evaluate_grants(project_requirements: dict) -> str:
     print("GRANT RETRIEVAL SYSTEM - STARTING")
     print("="*60)
     
+    emit_progress("initializing", "🚀 Starting grant analysis...", {"requirements": project_requirements})
+    
     response = coordinator_agent.invoke({
         "messages": [HumanMessage(content=json.dumps(project_requirements, indent=2))]
     })
     
     result = response["messages"][-1].content
+    
+    emit_progress("finalizing", "✅ Analysis complete, preparing results...")
     
     print("\n" + "="*60)
     print("GRANT RETRIEVAL SYSTEM - COMPLETE")
@@ -220,8 +252,129 @@ def find_and_evaluate_grants(project_requirements: dict) -> str:
     
     return result
 
-# Alias for backward compatibility and streaming endpoint
-find_and_evaluate_grants_with_progress = find_and_evaluate_grants
+def find_and_evaluate_grants_streaming(project_requirements: dict) -> Generator[dict, None, None]:
+    """
+    Streaming version that yields progress updates in real-time.
+    
+    Yields:
+        Progress updates as dicts with stage, message, details
+    """
+    import queue
+    import threading
+    
+    # Create a queue for progress updates from callbacks
+    progress_queue = queue.Queue()
+    
+    def progress_handler(update):
+        progress_queue.put({"type": "progress", "data": update})
+    
+    # Set callback
+    set_progress_callback(progress_handler)
+    
+    yield {"type": "progress", "data": {
+        "stage": "initializing",
+        "message": "🚀 Starting grant analysis...",
+        "details": {}
+    }}
+    
+    print("\n" + "="*60)
+    print("GRANT RETRIEVAL SYSTEM - STARTING")
+    print("="*60)
+    
+    yield {"type": "progress", "data": {
+        "stage": "analyzing",
+        "message": "📋 Analyzing project requirements...",
+        "details": {}
+    }}
+    
+    # Track what we've seen
+    seen_searches = 0
+    seen_evaluations = 0
+    agent_started = False
+    
+    def run_agent():
+        try:
+            result = coordinator_agent.invoke({
+                "messages": [HumanMessage(content=json.dumps(project_requirements, indent=2))]
+            })
+            progress_queue.put({"type": "result", "data": result["messages"][-1].content})
+        except Exception as e:
+            progress_queue.put({"type": "error", "data": str(e)})
+        finally:
+            progress_queue.put({"type": "done"})
+    
+    # Start agent in background thread
+    thread = threading.Thread(target=run_agent, daemon=True)
+    thread.start()
+    
+    # Stream progress updates as they come
+    import time
+    last_update_time = time.time()
+    
+    while True:
+        try:
+            # Get update with timeout
+            update = progress_queue.get(timeout=0.5)
+            
+            if update["type"] == "done":
+                break
+            elif update["type"] == "error":
+                yield {"type": "error", "data": {"message": update["data"]}}
+                break
+            elif update["type"] == "result":
+                yield {"type": "progress", "data": {
+                    "stage": "finalizing",
+                    "message": "✅ Analysis complete, preparing results...",
+                    "details": {}
+                }}
+                yield update
+                break
+            elif update["type"] == "progress":
+                # Forward the actual progress from tools
+                data = update["data"]
+                stage = data.get("stage", "")
+                
+                # Track stats
+                if stage == "searching":
+                    seen_searches += 1
+                elif stage == "evaluating":
+                    seen_evaluations += 1
+                
+                if not agent_started and stage == "coordinating":
+                    agent_started = True
+                
+                yield update
+                last_update_time = time.time()
+                
+        except queue.Empty:
+            # No update in 0.5s, send a generic heartbeat if it's been a while
+            current_time = time.time()
+            if current_time - last_update_time > 2.0:
+                # Generate contextual message based on what we've seen
+                if seen_evaluations > 0:
+                    message = f"📊 Still evaluating grants... (evaluated {seen_evaluations} so far)"
+                elif seen_searches > 0:
+                    message = f"🔍 Still searching for relevant grants..."
+                elif agent_started:
+                    message = "🤖 AI agents are analyzing your requirements..."
+                else:
+                    message = "⚙️ Processing your request..."
+                
+                yield {"type": "progress", "data": {
+                    "stage": "processing",
+                    "message": message,
+                    "details": {"searches": seen_searches, "evaluations": seen_evaluations}
+                }}
+                last_update_time = current_time
+            continue
+    
+    # Cleanup
+    set_progress_callback(None)
+    thread.join(timeout=1)
+    
+    print("\n" + "="*60)
+    print("GRANT RETRIEVAL SYSTEM - COMPLETE")
+    print("="*60)
 
 def get_chroma_client():
     """Returns the ChromaDB client for health checks"""
