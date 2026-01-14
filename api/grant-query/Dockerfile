@@ -1,16 +1,17 @@
-FROM continuumio/miniconda3
+FROM continuumio/miniconda3:latest
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y build-essential
-
-# Pre-create the conda environment
 COPY environment.yml .
 RUN conda env create -f environment.yml
 
-# Ensure the environment is activated by default in the shell
-RUN echo "conda activate grant-query" >> ~/.bashrc
-ENV PATH /opt/conda/envs/grant-query/bin:$PATH
+SHELL ["conda", "run", "-n", "grant_query", "/bin/bash", "-c"]
+
+COPY . .
+
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('Model downloaded successfully!')"
 
 EXPOSE 8000
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "grant_query"]
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

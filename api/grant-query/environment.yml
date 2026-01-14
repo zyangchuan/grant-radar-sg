@@ -6,12 +6,29 @@ dependencies:
   - python=3.11
   - pip
   - pip:
+    # Web Framework
+    - fastapi
+    - uvicorn[standard]
+    - pydantic
+    
+    # HTTP & Data Handling
     - requests
-    - sentence-transformers
+    - python-dotenv
+    
+    # AI & LangChain
     - langchain
     - langchain-openai
     - langchain-huggingface
     - langchain-chroma
     - langchain-community
+    - langchain-core
+    - langgraph
+    - langgraph-cli[inmem]
+    
+    # Vector Database
     - chromadb
-    - python-dotenv  # For managing API keys securely
+    - sentence-transformers
+    
+    # Optional: For better development experience
+    # - httpx  # Already included with FastAPI
+    # - python-multipart  # For file uploads if needed later

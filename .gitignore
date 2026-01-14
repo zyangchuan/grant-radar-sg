@@ -1,0 +1,5 @@
+.DS_Store
+**/__pycache__
+/api/grant-query/chroma_grants_db
+/api/grant-query/.langgraph_api
+/api/grant-query/.env
