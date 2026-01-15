@@ -1,70 +1,40 @@
 services:
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: chromadb-server
-    ports:
-      - "8001:8000"
-    volumes:
-      - ./chroma_data:/chroma/chroma
-    environment:
-      - ANONYMIZED_TELEMETRY=False
-      - ALLOW_RESET=True
-      - IS_PERSISTENT=TRUE
-    networks:
-      - grant-network
-    # # NEW: Healthcheck ensures Chroma is ready before other services start
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-    #   interval: 5s
-    #   timeout: 5s
-    #   retries: 1
-
-  grant-ingest-init:
-    build:
-      context: ./grant-query
-      dockerfile: Dockerfile
-    container_name: grant-ingest-init
-    volumes:
-      - ./grant-query:/app
-      # OPTIONAL: Map model cache to host to save disk space/rebuild time
-      # - ./model_cache:/root/.cache/chroma
-    env_file: ./grant-query/.env
-    environment:
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
-    # depends_on:
-    #   chromadb:
-    #     condition: service_healthy  # NEW: Waits for healthcheck to pass
-    networks:
-      - grant-network
-    command: ["python", "scripts/ingest_grants.py"]
-    # 'restart: "no"' is the default, so you can omit it, but keeping it is fine.
-
+  # Grant Query API Service
   grant-query:
     build:
       context: ./grant-query
       dockerfile: Dockerfile
     container_name: grant-query-api
-    volumes:
-      - ./grant-query:/app
-      # OPTIONAL: Map model cache to host (must match the ingest service)
-      # - ./model_cache:/root/.cache/chroma
-    env_file: ./grant-query/.env
     ports:
-      - "8000:8000"
+      - "8000:8080"
+    # Use shared .env from ingestion-engine
+    env_file: ./ingestion-engine/.env
     environment:
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
-    depends_on:
-      # Waiting for ingest to complete is correct
-      grant-ingest-init:
-        condition: service_completed_successfully
-      # Also good to wait for Chroma health directly
-      # chromadb:
-      #   condition: service_healthy
+      - PORT=8080
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
+    volumes:
+      - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
     networks:
       - grant-network
-    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+
+  # Ingestion Engine Service
+  ingestion-engine:
+    build:
+      context: ./ingestion-engine
+      dockerfile: Dockerfile
+    container_name: ingestion-engine
+    ports:
+      - "8002:8080"
+    env_file: ./ingestion-engine/.env
+    environment:
+      - PORT=8080
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
+    volumes:
+      - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
+    networks:
+      - grant-network
+    restart: unless-stopped
 
 networks:
   grant-network:
