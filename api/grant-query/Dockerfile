@@ -1,17 +1,20 @@
-FROM continuumio/miniconda3:latest
+FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY environment.yml .
-RUN conda env create -f environment.yml
+# Install system dependencies for pg8000/sqlalchemy if needed (usually none for pure python)
+# But we might need build-essential for some libs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-SHELL ["conda", "run", "-n", "grant_query", "/bin/bash", "-c"]
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('Model downloaded successfully!')"
+# Expose port (Cloud Run ignores this, but good for docs)
+EXPOSE 8080
 
-EXPOSE 8000
-
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "grant_query"]
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run uvicorn on the port defined by Cloud Run (default 8080)
+CMD sh -c "uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}"

@@ -1,0 +1,11 @@
+firebase-functions
+google-cloud-alloydb-connector[pg8000]
+sqlmodel
+pg8000
+google-genai
+functions-framework
+python-multipart
+pgvector
+python-dotenv
+beautifulsoup4
+httpx

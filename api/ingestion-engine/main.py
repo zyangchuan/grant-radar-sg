@@ -1,0 +1,114 @@
+from firebase_functions import https_fn, options
+from firebase_admin import initialize_app
+import asyncio
+import json
+import os
+from dotenv import load_dotenv
+from services.ingestor import ingest_grant
+from database import init_db
+
+# Load environment variables
+load_dotenv()
+
+# Initialize Firebase Admin
+initialize_app()
+
+# Global flag for lazy initialization (avoids DB connect during deploy verification)
+_db_initialized = False
+
+@https_fn.on_request(
+    timeout_sec=540, 
+    memory=options.MemoryOption.GB_2,
+    region="asia-southeast1"
+)
+def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
+    """
+    HTTP Trigger for Ingestion.
+    Supports GET for Health Check, POST for Action.
+    """
+    print(f"[System] Request received: {req.method} {req.path}", flush=True)
+
+    # 0. Health Check
+    if req.method == "GET":
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT_ID", "UNKNOWN")
+        return https_fn.Response(f"Ingestion Engine Ready. Project: {project}", status=200)
+
+    # Lazy Init DB
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            print("[System] Initializing Database...", flush=True)
+            init_db()
+            print("[System] Database initialized.", flush=True)
+            _db_initialized = True
+        except Exception as e:
+            print(f"[System] FATAL: Database init failed: {e}", flush=True)
+            return https_fn.Response(f"Database unavailable: {e}", status=500)
+
+    # 1. Fetch from Source API
+    SOURCE_API = "https://oursggrants.gov.sg/api/v1/grant_metadata/explore_grants"
+    print(f"[System] Fetching grants from {SOURCE_API}...", flush=True)
+    
+    try:
+        # Use httpx here too since we likely installed it, or requests if available (requests is not in standard runtime but I added httpx)
+        # We need sync or async. We are in a sync function wrapper but using async internally? 
+        # Actually trigger_ingestion is sync def.
+        import requests
+        resp = requests.get(SOURCE_API, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        all_grants = data.get("grant_metadata", [])
+    except Exception as e:
+        print(f"[Error] Failed to fetch source: {e}")
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+    # 2. Filter & Prepare List
+    grants_to_process = []
+    
+    # Process ALL grants for the cron job
+    print(f"[System] Found {len(all_grants)} total grants. Processing ALL...")
+    
+    for g in all_grants:
+        # User snippet shows 'deactivation_url' often has the link
+        url = g.get("original_url") or g.get("deactivation_url") or g.get("call_to_action_url")
+        gid = g.get("id")
+        slug = g.get("value") # The unique slug for the details API
+        
+        if gid:
+            # We prioritize slug for the new API, but keep URL for fallback scraping
+            grants_to_process.append({"id": str(gid), "url": url, "slug": slug})
+            
+    if not grants_to_process:
+        return https_fn.Response(json.dumps({"message": "No valid grants found to process"}), status=200)
+
+    # 3. Process in Parallel
+    async def process_batch():
+        # Concurrency Limit: 8-10 is a safe balance for Cloud Run memory and Gemini Rate Limits
+        semaphore = asyncio.Semaphore(10)
+        
+        async def protected_ingest(grant):
+            async with semaphore:
+                # Extract slug (value) and potentially the fallback URL
+                slug = grant.get("slug")
+                url = grant.get("url")
+                gid = grant.get("id")
+                
+                if slug and gid:
+                    print(f"[Core] Starting ingest for {gid} ({slug})...", flush=True)
+                    return await ingest_grant(gid, slug, url)
+                return False
+
+        results = await asyncio.gather(*[protected_ingest(g) for g in grants_to_process])
+        return results
+
+    # Run Async Loop
+    results = asyncio.run(process_batch())
+    
+    success_count = sum(1 for r in results if r)
+    
+    return https_fn.Response(json.dumps({
+        "success": True,
+        "processed": len(grants_to_process),
+        "succeeded": success_count,
+        "failed": len(grants_to_process) - success_count
+    }), status=200)

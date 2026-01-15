@@ -10,7 +10,11 @@ import json
 import asyncio
 
 # Import our AI service
-from grant_service import find_and_evaluate_grants, find_and_evaluate_grants_streaming, get_chroma_client, COLLECTION_NAME
+from grant_service import find_and_evaluate_grants, find_and_evaluate_grants_streaming
+from database import get_session
+from models import Grant
+from sqlmodel import select
+from sqlalchemy import text
 
 # ==========================================
 # PYDANTIC MODELS
@@ -74,19 +78,42 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
+    """Detailed health check for AlloyDB"""
     try:
-        chroma_client = get_chroma_client()
-        chroma_client.heartbeat()
-        chroma_status = "connected"
+        with get_session() as session:
+            session.exec(text("SELECT 1"))
+        db_status = "connected"
     except Exception as e:
-        chroma_status = f"error: {str(e)}"
+        db_status = f"error: {str(e)}"
     
     return {
-        "status": "healthy" if chroma_status == "connected" else "degraded",
-        "chromadb": chroma_status,
-        "collection": COLLECTION_NAME
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "database": db_status
     }
+
+@app.get("/grants", response_model=List[dict])
+async def list_grants():
+    """List all available grants in the database"""
+    try:
+        with get_session() as session:
+            # Return all grants, sorted by is_open (open first)
+            statement = select(Grant).order_by(Grant.is_open.desc())
+            results = session.exec(statement).all()
+            
+            return [
+                {
+                    "id": g.id, 
+                    "name": g.name, 
+                    "agency": g.agency_name,
+                    "max_funding": g.max_funding,
+                    "is_open": g.is_open,
+                    "original_url": g.original_url,
+                    "application_url": g.application_url
+                } 
+                for g in results
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/search", response_model=GrantSearchResponse)
 async def search_grants(requirements: ProjectRequirements):
@@ -208,12 +235,17 @@ async def search_grants_stream(requirements: ProjectRequirements):
                         # Parse final result
                         result = update['data']
                         
-                        if "```json" in result:
-                            result = result.split("```json")[1].split("```")[0].strip()
-                        elif "```" in result:
-                            result = result.split("```")[1].split("```")[0].strip()
-                        
-                        grants_data = json.loads(result)
+                        # Handle case where result is already a Python object
+                        if isinstance(result, (list, dict)):
+                            grants_data = result
+                        else:
+                            # Result is a string, may need cleaning
+                            if isinstance(result, str):
+                                if "```json" in result:
+                                    result = result.split("```json")[1].split("```")[0].strip()
+                                elif "```" in result:
+                                    result = result.split("```")[1].split("```")[0].strip()
+                            grants_data = json.loads(result)
                         
                         # Final response
                         response = {
@@ -256,28 +288,7 @@ async def search_grants_stream(requirements: ProjectRequirements):
         }
     )
 
-@app.post("/refresh-data")
-async def refresh_grant_data():
-    """Manually trigger data refresh from OurSG API"""
-    try:
-        from scripts.ingest_grants import fetch_and_store_grants
-        success = fetch_and_store_grants()
-        
-        if success:
-            return {
-                "success": True,
-                "message": "Grant data successfully refreshed"
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Data refresh failed"
-            )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Data refresh error: {str(e)}"
-        )
+
 
 if __name__ == "__main__":
     import uvicorn

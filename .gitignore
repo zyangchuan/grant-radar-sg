@@ -2,4 +2,11 @@
 **/__pycache__
 /api/grant-query/chroma_grants_db
 /api/grant-query/.langgraph_api
-/api/grant-query/.env
+
+# Environment files
+.env
+.env.*
+.env.local
+*.env
+**/.env
+**/scripts/.env

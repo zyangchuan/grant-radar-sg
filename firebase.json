@@ -1,0 +1,32 @@
+{
+    "functions": [
+        {
+            "source": "api/ingestion-engine",
+            "codebase": "default",
+            "ignore": [
+                "venv",
+                ".git",
+                "__pycache__"
+            ],
+            "runtime": "python312"
+        }
+    ],
+    "hosting": {
+        "public": "frontend/out",
+        "ignore": [
+            "firebase.json",
+            "**/.*",
+            "**/node_modules/**"
+        ],
+        "rewrites": [
+            {
+                "source": "/api/**",
+                "function": "trigger_ingestion"
+            },
+            {
+                "source": "**",
+                "destination": "/index.html"
+            }
+        ]
+    }
+}
