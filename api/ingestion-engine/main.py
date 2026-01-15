@@ -3,9 +3,11 @@ from firebase_admin import initialize_app
 import asyncio
 import json
 import os
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from services.ingestor import ingest_grant
-from database import init_db
+from database import init_db, get_session
+from models import Grant
 
 # Load environment variables
 load_dotenv()
@@ -15,6 +17,46 @@ initialize_app()
 
 # Global flag for lazy initialization (avoids DB connect during deploy verification)
 _db_initialized = False
+
+def determine_is_open_from_source(grant_data):
+    """
+    Determines is_open directly from the source API data.
+    Uses closing_dates and available fields.
+    """
+    closing_dates = grant_data.get("closing_dates", {})
+    available = grant_data.get("available", {})
+    
+    # If any closing_dates value contains "open", it's open
+    for key, status_text in closing_dates.items():
+        if status_text and "open" in str(status_text).lower():
+            return True
+    
+    # If any available field is True, it's open
+    for key, is_available in available.items():
+        if is_available:
+            return True
+            
+    # If we have closing_dates but none say open, assume closed
+    if closing_dates:
+        return False
+    
+    # Default to open if no data
+    return True
+
+def is_recently_updated(updated_at_str, days=14):
+    """
+    Check if the grant was updated within the last N days.
+    """
+    if not updated_at_str:
+        return True  # No date = assume needs processing
+    
+    try:
+        updated_at = datetime.strptime(updated_at_str, "%Y-%m-%d")
+        cutoff = datetime.now() - timedelta(days=days)
+        return updated_at >= cutoff
+    except:
+        return True  # Parse error = assume needs processing
+
 
 @https_fn.on_request(
     timeout_sec=540, 
@@ -50,9 +92,6 @@ def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
     print(f"[System] Fetching grants from {SOURCE_API}...", flush=True)
     
     try:
-        # Use httpx here too since we likely installed it, or requests if available (requests is not in standard runtime but I added httpx)
-        # We need sync or async. We are in a sync function wrapper but using async internally? 
-        # Actually trigger_ingestion is sync def.
         import requests
         resp = requests.get(SOURCE_API, timeout=30)
         resp.raise_for_status()
@@ -62,33 +101,80 @@ def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
         print(f"[Error] Failed to fetch source: {e}")
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
-    # 2. Filter & Prepare List
-    grants_to_process = []
-    
-    # Process ALL grants for the cron job
-    print(f"[System] Found {len(all_grants)} total grants. Processing ALL...")
+    # 2. Get existing grant IDs from database for comparison
+    existing_grant_ids = set()
+    try:
+        with get_session() as session:
+            from sqlmodel import select
+            results = session.exec(select(Grant.id)).all()
+            existing_grant_ids = set(results)
+    except Exception as e:
+        print(f"[Warn] Could not fetch existing grants: {e}")
+
+    # 3. Categorize grants
+    grants_to_process = []      # Full AI processing needed
+    grants_to_update_status = [] # Just update is_open, no AI needed
     
     for g in all_grants:
-        # User snippet shows 'deactivation_url' often has the link
+        gid = str(g.get("id"))
+        slug = g.get("value")
         url = g.get("original_url") or g.get("deactivation_url") or g.get("call_to_action_url")
-        gid = g.get("id")
-        slug = g.get("value") # The unique slug for the details API
+        updated_at = g.get("updated_at")
         
-        if gid:
-            # We prioritize slug for the new API, but keep URL for fallback scraping
-            grants_to_process.append({"id": str(gid), "url": url, "slug": slug})
+        if not gid or not slug:
+            continue
             
-    if not grants_to_process:
-        return https_fn.Response(json.dumps({"message": "No valid grants found to process"}), status=200)
+        # Calculate is_open from source data
+        is_open = determine_is_open_from_source(g)
+        
+        if gid in existing_grant_ids:
+            # Grant exists - just update is_open status (fast path)
+            grants_to_update_status.append({
+                "id": gid,
+                "is_open": is_open,
+                "closing_dates": g.get("closing_dates")
+            })
+        else:
+            # New grant - needs full processing
+            if is_recently_updated(updated_at, days=14):
+                grants_to_process.append({"id": gid, "url": url, "slug": slug})
+            else:
+                print(f"[Skip] {gid} not recently updated ({updated_at})")
 
-    # 3. Process in Parallel
+    print(f"[System] New grants to ingest: {len(grants_to_process)}")
+    print(f"[System] Existing grants to update status: {len(grants_to_update_status)}")
+
+    # 4. Batch update is_open for existing grants (fast, no AI)
+    updated_count = 0
+    try:
+        with get_session() as session:
+            for g in grants_to_update_status:
+                stmt = (
+                    Grant.__table__.update()
+                    .where(Grant.id == g["id"])
+                    .values(is_open=g["is_open"])
+                )
+                session.exec(stmt)
+            session.commit()
+            updated_count = len(grants_to_update_status)
+            print(f"[System] Updated is_open for {updated_count} existing grants")
+    except Exception as e:
+        print(f"[Error] Failed to batch update is_open: {e}")
+
+    # 5. Process new grants with full AI pipeline
+    if not grants_to_process:
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "new_processed": 0,
+            "status_updated": updated_count,
+            "message": "No new grants to process"
+        }), status=200)
+
     async def process_batch():
-        # Concurrency Limit: 8-10 is a safe balance for Cloud Run memory and Gemini Rate Limits
         semaphore = asyncio.Semaphore(10)
         
         async def protected_ingest(grant):
             async with semaphore:
-                # Extract slug (value) and potentially the fallback URL
                 slug = grant.get("slug")
                 url = grant.get("url")
                 gid = grant.get("id")
@@ -101,14 +187,13 @@ def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
         results = await asyncio.gather(*[protected_ingest(g) for g in grants_to_process])
         return results
 
-    # Run Async Loop
     results = asyncio.run(process_batch())
-    
     success_count = sum(1 for r in results if r)
     
     return https_fn.Response(json.dumps({
         "success": True,
-        "processed": len(grants_to_process),
-        "succeeded": success_count,
-        "failed": len(grants_to_process) - success_count
+        "new_processed": len(grants_to_process),
+        "new_succeeded": success_count,
+        "new_failed": len(grants_to_process) - success_count,
+        "status_updated": updated_count
     }), status=200)

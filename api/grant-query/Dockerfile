@@ -1,14 +1,12 @@
-# Grant Query Service - Miniconda-based Dockerfile
-FROM continuumio/miniconda3:latest
+# Grant Query Service - Cloud Run optimized Dockerfile
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Create conda environment with Python 3.11
-RUN conda create -n grantquery python=3.11 -y && \
-    conda clean -afy
-
-# Activate environment and install pip dependencies
-SHELL ["conda", "run", "-n", "grantquery", "/bin/bash", "-c"]
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy and install requirements
 COPY requirements.txt .
@@ -17,9 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port for Cloud Run
+# Expose port (Cloud Run uses PORT env var)
 EXPOSE 8080
 
-# Set conda environment activation and run uvicorn
-ENV PATH /opt/conda/envs/grantquery/bin:$PATH
+# Run uvicorn on the port defined by Cloud Run (default 8080)
 CMD ["sh", "-c", "uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}"]
