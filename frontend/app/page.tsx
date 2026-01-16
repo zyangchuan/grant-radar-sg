@@ -155,11 +155,18 @@ export default function Home() {
             >
               Search Grants
             </Button>
-            <Link href="/grants" className="block">
-              <Button variant="outline" className="w-full rounded-lg h-10">
-                Browse All Grants
-              </Button>
-            </Link>
+            <div className="grid grid-cols-2 gap-3">
+              <Link href="/grants" className="block">
+                <Button variant="outline" className="w-full rounded-lg h-10">
+                  Browse All Grants
+                </Button>
+              </Link>
+              <Link href="/subscribe" className="block">
+                <Button variant="outline" className="w-full rounded-lg h-10 gap-2">
+                  🔔 Get Notified
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </motion.div>

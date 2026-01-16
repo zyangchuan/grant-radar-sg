@@ -8,11 +8,13 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, AsyncGenerator
 import json
 import asyncio
+from datetime import datetime
 
 # Import our AI service
-from grant_service import find_and_evaluate_grants, find_and_evaluate_grants_streaming
+from grant_service import find_and_evaluate_grants, find_and_evaluate_grants_streaming, embeddings
 from database import get_session
 from models import Grant
+from subscription_model import Subscription
 from sqlmodel import select
 from sqlalchemy import text
 
@@ -45,6 +47,32 @@ class GrantSearchResponse(BaseModel):
     grants: List[GrantResult]
     total_found: int
     message: Optional[str] = None
+
+
+# Subscription Models
+class SubscriptionCreate(BaseModel):
+    email: str = Field(..., description="Subscriber email address")
+    organization_name: str = Field(..., description="Organization name")
+    issue_area: str = Field(..., description="Main issue area or theme")
+    scope_of_grant: str = Field(..., description="Detailed scope and objectives")
+    kpis: List[str] = Field(default=[], description="Key Performance Indicators")
+    funding_quantum: float = Field(..., description="Desired funding amount")
+
+
+class SubscriptionResponse(BaseModel):
+    id: str
+    email: str
+    organization_name: str
+    issue_area: str
+    scope_of_grant: str
+    kpis: List[str]
+    funding_quantum: float
+    is_active: bool
+    created_at: datetime
+
+
+class NewGrantNotification(BaseModel):
+    grant_id: str = Field(..., description="ID of the newly ingested grant")
 
 # ==========================================
 # INITIALIZE FASTAPI
@@ -288,6 +316,139 @@ async def search_grants_stream(requirements: ProjectRequirements):
         }
     )
 
+
+# ==========================================
+# SUBSCRIPTION ENDPOINTS
+# ==========================================
+@app.post("/subscribe", response_model=SubscriptionResponse)
+async def create_subscription(sub: SubscriptionCreate):
+    """
+    Subscribe to email notifications for new grants matching criteria.
+    """
+    try:
+        # Generate embedding for preferences
+        preference_text = f"{sub.issue_area} {sub.scope_of_grant} {' '.join(sub.kpis)}"
+        preference_embedding = embeddings.embed_query(preference_text)
+        
+        # Create subscription
+        subscription = Subscription(
+            email=sub.email,
+            organization_name=sub.organization_name,
+            issue_area=sub.issue_area,
+            scope_of_grant=sub.scope_of_grant,
+            kpis=sub.kpis,
+            funding_quantum=sub.funding_quantum,
+            preference_embedding=preference_embedding,
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+        
+        with get_session() as session:
+            # Check if email already subscribed with similar preferences
+            existing = session.exec(
+                select(Subscription).where(
+                    Subscription.email == sub.email,
+                    Subscription.is_active == True
+                )
+            ).first()
+            
+            if existing:
+                # Update existing subscription
+                existing.issue_area = sub.issue_area
+                existing.scope_of_grant = sub.scope_of_grant
+                existing.kpis = sub.kpis
+                existing.funding_quantum = sub.funding_quantum
+                existing.preference_embedding = preference_embedding
+                session.add(existing)
+                session.commit()
+                session.refresh(existing)
+                
+                return SubscriptionResponse(
+                    id=existing.id,
+                    email=existing.email,
+                    organization_name=existing.organization_name,
+                    issue_area=existing.issue_area,
+                    scope_of_grant=existing.scope_of_grant,
+                    kpis=existing.kpis,
+                    funding_quantum=existing.funding_quantum,
+                    is_active=existing.is_active,
+                    created_at=existing.created_at
+                )
+            
+            # Create new subscription
+            session.add(subscription)
+            session.commit()
+            session.refresh(subscription)
+            
+            return SubscriptionResponse(
+                id=subscription.id,
+                email=subscription.email,
+                organization_name=subscription.organization_name,
+                issue_area=subscription.issue_area,
+                scope_of_grant=subscription.scope_of_grant,
+                kpis=subscription.kpis,
+                funding_quantum=subscription.funding_quantum,
+                is_active=subscription.is_active,
+                created_at=subscription.created_at
+            )
+            
+    except Exception as e:
+        print(f"[Subscribe Error] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/subscriptions/{email}", response_model=List[SubscriptionResponse])
+async def get_subscriptions(email: str):
+    """
+    Get all active subscriptions for an email address.
+    """
+    try:
+        with get_session() as session:
+            results = session.exec(
+                select(Subscription).where(
+                    Subscription.email == email,
+                    Subscription.is_active == True
+                )
+            ).all()
+            
+            return [
+                SubscriptionResponse(
+                    id=s.id,
+                    email=s.email,
+                    organization_name=s.organization_name,
+                    issue_area=s.issue_area,
+                    scope_of_grant=s.scope_of_grant,
+                    kpis=s.kpis,
+                    funding_quantum=s.funding_quantum,
+                    is_active=s.is_active,
+                    created_at=s.created_at
+                )
+                for s in results
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/subscriptions/{subscription_id}")
+async def unsubscribe(subscription_id: str):
+    """
+    Unsubscribe (deactivate) a subscription.
+    """
+    try:
+        with get_session() as session:
+            subscription = session.get(Subscription, subscription_id)
+            if not subscription:
+                raise HTTPException(status_code=404, detail="Subscription not found")
+            
+            subscription.is_active = False
+            session.add(subscription)
+            session.commit()
+            
+            return {"success": True, "message": "Successfully unsubscribed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

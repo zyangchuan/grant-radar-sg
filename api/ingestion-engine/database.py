@@ -29,9 +29,7 @@ def get_connection_string() -> str:
          return f"postgresql+pg8000://{ALLOYDB_DB_USER}:{ALLOYDB_DB_PASS}@localhost:5432/{ALLOYDB_DB_NAME}"
     return "postgresql+pg8000://"
 
-# Initialize Connector
-# Use 'lazy' refresh strategy for serverless environments (Cloud Run/Functions)
-connector = Connector(refresh_strategy="lazy")
+# Connector is initialized lazily in getconn() to avoid blocking during deployment
 
 # ... imports
 import logging

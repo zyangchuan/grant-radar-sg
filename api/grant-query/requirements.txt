@@ -11,3 +11,5 @@ google-cloud-alloydb-connector[pg8000]
 pg8000
 sqlalchemy
 sqlmodel
+pgvector
+resend

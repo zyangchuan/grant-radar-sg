@@ -14,7 +14,14 @@ from models import Grant
 MODEL_ID = "gemini-3-flash-preview"
 EMBEDDING_MODEL_ID = "text-embedding-004"
 
-client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+# Lazy-initialized client to avoid failures during deployment analysis
+_client = None
+
+def get_genai_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+    return _client
 
 async def fetch_grant_details(slug: str):
     """
@@ -305,7 +312,7 @@ async def ingest_grant(grant_id: str, slug: str, external_url: str = None):
         for attempt in range(3):
             try:
                 # 5. Call Gemini
-                response = await client.aio.models.generate_content(
+                response = await get_genai_client().aio.models.generate_content(
                     model=MODEL_ID,
                     contents=parts,
                     config=GenerateContentConfig(
@@ -337,7 +344,7 @@ async def ingest_grant(grant_id: str, slug: str, external_url: str = None):
         if not text_to_embed: 
             text_to_embed = f"{data.get('name')} {data.get('strategic_intent')}"
             
-        embed_resp = await client.aio.models.embed_content(
+        embed_resp = await get_genai_client().aio.models.embed_content(
             model=EMBEDDING_MODEL_ID,
             contents=text_to_embed,
         )

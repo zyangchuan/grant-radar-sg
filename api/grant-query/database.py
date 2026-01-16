@@ -1,6 +1,10 @@
 import os
 from contextlib import contextmanager
 from typing import Generator
+from dotenv import load_dotenv
+
+# Load environment variables FIRST
+load_dotenv()
 
 from google.cloud.alloydb.connector import Connector, IPTypes
 from sqlalchemy import create_engine
@@ -29,9 +33,11 @@ def get_connection_string() -> str:
          return f"postgresql+pg8000://{ALLOYDB_DB_USER}:{ALLOYDB_DB_PASS}@localhost:5432/{ALLOYDB_DB_NAME}"
     return "postgresql+pg8000://"
 
-# Initialize Connector
+# Initialize Connector only when not using local DB
 # Use 'lazy' refresh strategy for serverless environments (Cloud Run/Functions)
-connector = Connector(refresh_strategy="lazy")
+connector = None
+if os.environ.get("USE_LOCAL_DB") != "true":
+    connector = Connector(refresh_strategy="lazy")
 
 # ... imports
 import logging

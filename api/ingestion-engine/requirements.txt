@@ -9,3 +9,4 @@ pgvector
 python-dotenv
 beautifulsoup4
 httpx
+resend
