@@ -1,0 +1,19 @@
+name: ingestion-engine
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - sqlmodel
+  - pg8000
+  - python-multipart
+  - python-dotenv
+  - beautifulsoup4
+  - httpx
+  - pip
+  - pip:
+    - firebase-functions
+    - google-cloud-alloydb-connector[pg8000]
+    - google-genai
+    - functions-framework
+    - pgvector

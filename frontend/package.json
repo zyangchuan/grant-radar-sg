@@ -15,6 +15,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "firebase": "^12.8.0",
     "framer-motion": "^12.26.1",
     "lucide-react": "^0.562.0",
     "next": "15.0.0",
@@ -25,8 +26,8 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "overrides": {
-    "react": "$react",
-    "react-dom": "$react-dom"
+    "react": "19.0.0-rc-65a56d0e-20241020",
+    "react-dom": "19.0.0-rc-65a56d0e-20241020"
   },
   "devDependencies": {
     "@types/node": "^20",

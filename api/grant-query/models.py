@@ -49,3 +49,19 @@ class Grant(SQLModel, table=True):
     
     class Config:
         arbitrary_types_allowed = True
+
+class Organization(SQLModel, table=True):
+    __tablename__ = "organizations"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    firebase_uid: Optional[str] = Field(default=None, index=True, unique=True)
+    organization_name: str
+    registration_id: str
+    mailing_address: str
+    mission_summary: str = Field(sa_column=Column(TEXT))
+    primary_focus_area: str
+    primary_contact_name: str
+    contact_email: str
+    organization_website: Optional[str] = None
+    total_staff_volunteers: int
+    annual_budget_range: str

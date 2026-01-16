@@ -24,6 +24,14 @@ dependencies:
     - langchain-core
     - langgraph
     - langgraph-cli[inmem]
+    - langchain-google-genai
+    - langchain-google-alloydb-pg
+    
+    # Database
+    - google-cloud-alloydb-connector[pg8000]
+    - pg8000
+    - sqlalchemy
+    - sqlmodel
     
     # Vector Database
     - chromadb
@@ -32,3 +40,4 @@ dependencies:
     # Optional: For better development experience
     # - httpx  # Already included with FastAPI
     # - python-multipart  # For file uploads if needed later
+    - firebase-admin
