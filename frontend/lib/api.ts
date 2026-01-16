@@ -1,3 +1,4 @@
+import { auth } from "@/lib/firebase";
 
 export interface SearchRequirements {
     issue_area: string;
@@ -45,10 +46,12 @@ export async function searchGrantsStream(
 ): Promise<void> {
     try {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const token = await auth.currentUser?.getIdToken();
         const response = await fetch(`${API_URL}/search/stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify(requirements)
         });
@@ -90,12 +93,74 @@ export async function searchGrantsStream(
 // Fetch all grants from database
 export async function fetchAllGrants(): Promise<any[]> {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const response = await fetch(`${API_URL}/grants`);
+    const token = await auth.currentUser?.getIdToken();
+    const response = await fetch(`${API_URL}/grants`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
 
     if (!response.ok) {
         throw new Error('Failed to fetch grants');
     }
 
     // API returns array directly, not { grants: [...] }
+    return await response.json();
+}
+
+export interface Organization {
+    id?: number;
+    firebase_uid?: string;
+    organization_name: string;
+    registration_id: string;
+    mailing_address: string;
+    mission_summary: string;
+    primary_focus_area: string;
+    primary_contact_name: string;
+    contact_email: string;
+    organization_website?: string;
+    total_staff_volunteers: number;
+    annual_budget_range: string;
+}
+
+export async function getOrganization(): Promise<Organization | null> {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const token = await auth.currentUser?.getIdToken();
+
+    if (!token) return null;
+
+    const response = await fetch(`${API_URL}/organization`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (response.status === 404) return null;
+    if (!response.ok) {
+        throw new Error('Failed to fetch organization');
+    }
+
+    return await response.json();
+}
+
+export async function saveOrganization(org: Organization): Promise<Organization> {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const token = await auth.currentUser?.getIdToken();
+
+    if (!token) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/organization`, {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(org)
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to save organization');
+    }
+
     return await response.json();
 }

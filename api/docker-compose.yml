@@ -12,24 +12,7 @@ services:
     environment:
       - PORT=8080
       - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
-    volumes:
-      - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
-    networks:
-      - grant-network
-    restart: unless-stopped
-
-  # Ingestion Engine Service
-  ingestion-engine:
-    build:
-      context: ./ingestion-engine
-      dockerfile: Dockerfile
-    container_name: ingestion-engine
-    ports:
-      - "8002:8080"
-    env_file: ./ingestion-engine/.env
-    environment:
-      - PORT=8080
-      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
+      - GOOGLE_CLOUD_PROJECT=${GCP_PROJECT_ID:-grantsmapsg}
     volumes:
       - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
     networks:

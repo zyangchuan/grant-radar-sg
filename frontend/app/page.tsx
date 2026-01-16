@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sparkles, ArrowRight, DollarSign } from "lucide-react";
+import { auth } from "@/lib/firebase";
 
 export default function Home() {
   const router = useRouter();
@@ -59,6 +60,18 @@ export default function Home() {
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/5 rounded-full blur-[100px]" />
+      </div>
+
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+        <Link href="/profile">
+          <Button variant="ghost">
+            <Sparkles className="mr-2 h-4 w-4" />
+            Profile
+          </Button>
+        </Link>
+        <Button variant="outline" onClick={() => auth.signOut()}>
+          Sign Out
+        </Button>
       </div>
 
       <motion.div

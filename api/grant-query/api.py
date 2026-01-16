@@ -11,10 +11,12 @@ import asyncio
 
 # Import our AI service
 from grant_service import find_and_evaluate_grants, find_and_evaluate_grants_streaming
-from database import get_session
-from models import Grant
+from database import get_session, init_db
+from models import Grant, Organization
 from sqlmodel import select
 from sqlalchemy import text
+from fastapi import Depends
+from auth import get_current_user
 
 # ==========================================
 # PYDANTIC MODELS
@@ -63,6 +65,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
 # ==========================================
 # API ENDPOINTS
 # ==========================================
@@ -92,7 +98,7 @@ async def health_check():
     }
 
 @app.get("/grants", response_model=List[dict])
-async def list_grants():
+async def list_grants(current_user: dict = Depends(get_current_user)):
     """List all available grants in the database"""
     try:
         with get_session() as session:
@@ -115,12 +121,64 @@ async def list_grants():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/organization", response_model=Optional[Organization])
+async def get_organization(current_user: dict = Depends(get_current_user)):
+    """Get the organization profile for the current user."""
+    try:
+        firebase_uid = current_user['uid']
+        with get_session() as session:
+            statement = select(Organization).where(Organization.firebase_uid == firebase_uid)
+            org = session.exec(statement).first()
+            return org
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/organization", response_model=Organization)
+async def create_or_update_organization(
+    org_data: Organization, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Create or update organization profile."""
+    try:
+        firebase_uid = current_user['uid']
+        # Ensure the user is updating their own record
+        org_data.firebase_uid = firebase_uid
+        
+        with get_session() as session:
+            statement = select(Organization).where(Organization.firebase_uid == firebase_uid)
+            existing_org = session.exec(statement).first()
+            
+            if existing_org:
+                # Update existing
+                for key, value in org_data.dict(exclude_unset=True).items():
+                    # prevent overwriting id or uid if passed maliciously (though pydantic helps)
+                    if key not in ['id', 'firebase_uid']:
+                        setattr(existing_org, key, value)
+                session.add(existing_org)
+                session.commit()
+                session.refresh(existing_org)
+                return existing_org
+            else:
+                # Create new
+                session.add(org_data)
+                session.commit()
+                session.refresh(org_data)
+                return org_data
+                
+    except Exception as e:
+        print(f"Error saving org: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/search", response_model=GrantSearchResponse)
-async def search_grants(requirements: ProjectRequirements):
+async def search_grants(
+    requirements: ProjectRequirements,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Search and evaluate grants (traditional non-streaming endpoint)
     """
     try:
+        print(f"User {current_user.get('email', 'unknown')} searching for grants")
         req_dict = requirements.model_dump()
         result = find_and_evaluate_grants_with_progress(req_dict)
         
@@ -150,7 +208,10 @@ async def search_grants(requirements: ProjectRequirements):
         )
 
 @app.post("/search/stream")
-async def search_grants_stream(requirements: ProjectRequirements):
+async def search_grants_stream(
+    requirements: ProjectRequirements,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Search and evaluate grants with streaming progress updates
     
