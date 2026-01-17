@@ -161,41 +161,7 @@ async def get_organization(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/organization", response_model=Organization)
-async def create_or_update_organization(
-    org_data: Organization, 
-    current_user: dict = Depends(get_current_user)
-):
-    """Create or update organization profile."""
-    try:
-        firebase_uid = current_user['uid']
-        # Ensure the user is updating their own record
-        org_data.firebase_uid = firebase_uid
-        
-        with get_session() as session:
-            statement = select(Organization).where(Organization.firebase_uid == firebase_uid)
-            existing_org = session.exec(statement).first()
-            
-            if existing_org:
-                # Update existing
-                for key, value in org_data.dict(exclude_unset=True).items():
-                    # prevent overwriting id or uid if passed maliciously (though pydantic helps)
-                    if key not in ['id', 'firebase_uid']:
-                        setattr(existing_org, key, value)
-                session.add(existing_org)
-                session.commit()
-                session.refresh(existing_org)
-                return existing_org
-            else:
-                # Create new
-                session.add(org_data)
-                session.commit()
-                session.refresh(org_data)
-                return org_data
-                
-    except Exception as e:
-        print(f"Error saving org: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/search", response_model=GrantSearchResponse)
 async def search_grants(
@@ -379,6 +345,150 @@ async def search_grants_stream(
 
 
 # ==========================================
+# INTERNAL HELPERS
+# ==========================================
+def upsert_subscription(session, sub_data: SubscriptionCreate) -> Subscription:
+    """
+    Reusable helper to create or update a subscription.
+    """
+    # Generate embedding for preferences
+    preference_text = f"{sub_data.issue_area} {sub_data.scope_of_grant} {' '.join(sub_data.kpis)}"
+    preference_embedding = embeddings.embed_query(preference_text)
+    
+    # Check if email already subscribed
+    existing = session.exec(
+        select(Subscription).where(
+            Subscription.email == sub_data.email
+        )
+    ).first()
+    
+    if existing:
+        # Update existing subscription
+        existing.organization_name = sub_data.organization_name
+        existing.issue_area = sub_data.issue_area
+        existing.scope_of_grant = sub_data.scope_of_grant
+        existing.kpis = sub_data.kpis
+        existing.funding_quantum = sub_data.funding_quantum
+        existing.preference_embedding = preference_embedding
+        existing.is_active = True # Reactivate if it was unsubscribed
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+    
+    # Create new subscription
+    subscription = Subscription(
+        email=sub_data.email,
+        organization_name=sub_data.organization_name,
+        issue_area=sub_data.issue_area,
+        scope_of_grant=sub_data.scope_of_grant,
+        kpis=sub_data.kpis,
+        funding_quantum=sub_data.funding_quantum,
+        preference_embedding=preference_embedding,
+        is_active=True,
+        created_at=datetime.utcnow()
+    )
+    session.add(subscription)
+    session.commit()
+    session.refresh(subscription)
+    return subscription
+
+
+# ==========================================
+# ORGANIZATION ENDPOINTS
+# ==========================================
+
+class OrganizationInput(BaseModel):
+    """
+    Input model for organization creation/update with optional subscription flag.
+    This is a plain Pydantic model (not SQLModel) to avoid deepcopy issues.
+    """
+    organization_name: str
+    registration_id: str
+    mailing_address: str
+    mission_summary: str
+    primary_focus_area: str
+    primary_contact_name: str
+    contact_email: str
+    organization_website: Optional[str] = None
+    total_staff_volunteers: int
+    annual_budget_range: str
+    subscribe_to_updates: bool = False
+
+@app.get("/organization", response_model=Optional[Organization])
+async def get_organization(current_user: dict = Depends(get_current_user)):
+    """Get the organization profile for the current user."""
+    try:
+        firebase_uid = current_user['uid']
+        with get_session() as session:
+            statement = select(Organization).where(Organization.firebase_uid == firebase_uid)
+            org = session.exec(statement).first()
+            return org
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/organization", response_model=Organization)
+async def create_or_update_organization(
+    org_input: OrganizationInput, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Create or update organization profile and optionally subscribe."""
+    try:
+        firebase_uid = current_user['uid']
+        # Extract the base organization data
+        org_data = Organization(**org_input.model_dump(exclude={"subscribe_to_updates"}))
+        org_data.firebase_uid = firebase_uid
+        
+        with get_session() as session:
+            statement = select(Organization).where(Organization.firebase_uid == firebase_uid)
+            existing_org = session.exec(statement).first()
+            
+            if existing_org:
+                # Update existing
+                for key, value in org_data.dict(exclude_unset=True).items():
+                    if key not in ['id', 'firebase_uid']:
+                        setattr(existing_org, key, value)
+                session.add(existing_org)
+                final_org = existing_org
+            else:
+                # Create new
+                session.add(org_data)
+                final_org = org_data
+                
+            session.commit()
+            session.refresh(final_org)
+            
+            # Handle subscription if requested
+            if org_input.subscribe_to_updates:
+                try:
+                    # Map organization fields to subscription fields
+                    sub_create = SubscriptionCreate(
+                        email=final_org.contact_email,
+                        organization_name=final_org.organization_name,
+                        issue_area=final_org.primary_focus_area,
+                        scope_of_grant=final_org.mission_summary,
+                        kpis=[], 
+                        funding_quantum=0.0
+                    )
+                    upsert_subscription(session, sub_create)
+                    print(f"Auto-subscribed organization: {final_org.organization_name}")
+                    
+                    # Send Welcome Email
+                    from email_client import send_welcome_email
+                    send_welcome_email(final_org.contact_email, final_org.organization_name)
+                    
+                except Exception as sub_e:
+                    print(f"Failed to auto-subscribe: {sub_e}")
+                    # Don't fail the whole request, just log it
+            
+            return final_org
+                
+    except Exception as e:
+        print(f"Error saving org: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
 # SUBSCRIPTION ENDPOINTS
 # ==========================================
 @app.post("/subscribe", response_model=SubscriptionResponse)
@@ -387,59 +497,8 @@ async def create_subscription(sub: SubscriptionCreate):
     Subscribe to email notifications for new grants matching criteria.
     """
     try:
-        # Generate embedding for preferences
-        preference_text = f"{sub.issue_area} {sub.scope_of_grant} {' '.join(sub.kpis)}"
-        preference_embedding = embeddings.embed_query(preference_text)
-        
-        # Create subscription
-        subscription = Subscription(
-            email=sub.email,
-            organization_name=sub.organization_name,
-            issue_area=sub.issue_area,
-            scope_of_grant=sub.scope_of_grant,
-            kpis=sub.kpis,
-            funding_quantum=sub.funding_quantum,
-            preference_embedding=preference_embedding,
-            is_active=True,
-            created_at=datetime.utcnow()
-        )
-        
         with get_session() as session:
-            # Check if email already subscribed with similar preferences
-            existing = session.exec(
-                select(Subscription).where(
-                    Subscription.email == sub.email,
-                    Subscription.is_active == True
-                )
-            ).first()
-            
-            if existing:
-                # Update existing subscription
-                existing.issue_area = sub.issue_area
-                existing.scope_of_grant = sub.scope_of_grant
-                existing.kpis = sub.kpis
-                existing.funding_quantum = sub.funding_quantum
-                existing.preference_embedding = preference_embedding
-                session.add(existing)
-                session.commit()
-                session.refresh(existing)
-                
-                return SubscriptionResponse(
-                    id=existing.id,
-                    email=existing.email,
-                    organization_name=existing.organization_name,
-                    issue_area=existing.issue_area,
-                    scope_of_grant=existing.scope_of_grant,
-                    kpis=existing.kpis,
-                    funding_quantum=existing.funding_quantum,
-                    is_active=existing.is_active,
-                    created_at=existing.created_at
-                )
-            
-            # Create new subscription
-            session.add(subscription)
-            session.commit()
-            session.refresh(subscription)
+            subscription = upsert_subscription(session, sub)
             
             return SubscriptionResponse(
                 id=subscription.id,

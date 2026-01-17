@@ -1,4 +1,4 @@
-from firebase_functions import https_fn, options
+from firebase_functions import https_fn, options, scheduler_fn
 from firebase_admin import initialize_app
 import asyncio
 import json
@@ -266,3 +266,110 @@ def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
         "new_failed": len(grants_to_process) - success_count,
         "status_updated": updated_count
     }), status=200)
+
+
+# ==========================================
+# SCHEDULED FUNCTION - Daily Grant Check
+# ==========================================
+@scheduler_fn.on_schedule(
+    schedule="0 8 * * *",  # 8:00 AM daily (cron format)
+    timezone=scheduler_fn.Timezone("Asia/Singapore"),
+    region="asia-southeast1",
+    memory=options.MemoryOption.GB_2,
+    timeout_sec=540
+)
+def scheduled_ingestion(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    Daily scheduled job to check for new grants and send email notifications.
+    Runs at 8:00 AM Singapore time every day.
+    """
+    import requests
+    
+    print(f"[Scheduler] Starting daily ingestion at {datetime.now()}", flush=True)
+    
+    # Lazy Init DB
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            print("[Scheduler] Initializing Database...", flush=True)
+            init_db()
+            print("[Scheduler] Database initialized.", flush=True)
+            _db_initialized = True
+        except Exception as e:
+            print(f"[Scheduler] FATAL: Database init failed: {e}", flush=True)
+            return
+
+    # Fetch from Source API
+    SOURCE_API = "https://oursggrants.gov.sg/api/v1/grant_metadata/explore_grants"
+    print(f"[Scheduler] Fetching grants from {SOURCE_API}...", flush=True)
+    
+    try:
+        resp = requests.get(SOURCE_API, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        all_grants = data.get("grant_metadata", [])
+    except Exception as e:
+        print(f"[Scheduler] Failed to fetch source: {e}", flush=True)
+        return
+
+    # Get existing grant IDs
+    existing_grant_ids = set()
+    try:
+        with get_session() as session:
+            from sqlmodel import select
+            results = session.exec(select(Grant.id)).all()
+            existing_grant_ids = set(results)
+    except Exception as e:
+        print(f"[Scheduler] Could not fetch existing grants: {e}", flush=True)
+
+    # Find new grants
+    grants_to_process = []
+    for g in all_grants:
+        gid = str(g.get("id"))
+        slug = g.get("value")
+        url = g.get("original_url") or g.get("deactivation_url") or g.get("call_to_action_url")
+        updated_at = g.get("updated_at")
+        
+        if not gid or not slug:
+            continue
+            
+        if gid not in existing_grant_ids:
+            if is_recently_updated(updated_at, days=14):
+                grants_to_process.append({"id": gid, "url": url, "slug": slug})
+
+    print(f"[Scheduler] New grants to process: {len(grants_to_process)}", flush=True)
+
+    if not grants_to_process:
+        print("[Scheduler] No new grants found", flush=True)
+        return
+
+    # Process new grants
+    async def process_batch():
+        semaphore = asyncio.Semaphore(10)
+        
+        async def protected_ingest(grant):
+            async with semaphore:
+                slug = grant.get("slug")
+                url = grant.get("url")
+                gid = grant.get("id")
+                
+                if slug and gid:
+                    print(f"[Scheduler] Ingesting {gid} ({slug})...", flush=True)
+                    success = await ingest_grant(gid, slug, url)
+                    
+                    if success:
+                        try:
+                            await send_notifications_for_grant(gid)
+                        except Exception as e:
+                            print(f"[Scheduler] Notification failed: {e}", flush=True)
+                    
+                    return success
+                return False
+
+        results = await asyncio.gather(*[protected_ingest(g) for g in grants_to_process])
+        return results
+
+    results = asyncio.run(process_batch())
+    success_count = sum(1 for r in results if r)
+    
+    print(f"[Scheduler] Complete. Processed: {len(grants_to_process)}, Succeeded: {success_count}", flush=True)

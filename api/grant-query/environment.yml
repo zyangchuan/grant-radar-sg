@@ -34,10 +34,11 @@ dependencies:
     - sqlmodel
     
     # Vector Database
-    - chromadb
-    - sentence-transformers
+    # - chromadb
+    # - sentence-transformers
     
     # Optional: For better development experience
     # - httpx  # Already included with FastAPI
     # - python-multipart  # For file uploads if needed later
     - firebase-admin
+    - resend

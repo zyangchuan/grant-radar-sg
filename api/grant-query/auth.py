@@ -16,12 +16,15 @@ if not firebase_admin._apps:
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
             print("Firebase Admin initialized with service account file")
-        elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-             # Fallback to standard Google Auth (good for Cloud Run)
-            firebase_admin.initialize_app()
-            print("Firebase Admin initialized with Google Application Credentials")
         else:
-             print("Warning: Firebase Admin not initialized. No credentials found.")
+             # Fallback to standard Google Auth (good for Cloud Run & Local ADC)
+            project_id = os.environ.get("GCP_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+            if project_id:
+                firebase_admin.initialize_app(options={'projectId': project_id})
+                print(f"Firebase Admin initialized with project ID: {project_id}")
+            else:
+                firebase_admin.initialize_app()
+                print("Firebase Admin initialized (default)")
     except Exception as e:
         print(f"Failed to initialize Firebase Admin: {e}")
 

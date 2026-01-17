@@ -121,6 +121,7 @@ export interface Organization {
     organization_website?: string;
     total_staff_volunteers: number;
     annual_budget_range: string;
+    subscribe_to_updates?: boolean;
 }
 
 export async function getOrganization(): Promise<Organization | null> {

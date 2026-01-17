@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Building2, Loader2, Bell, Sparkles } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -34,6 +34,7 @@ export default function OnboardingPage() {
     organization_website: "",
     total_staff_volunteers: 0,
     annual_budget_range: "",
+    subscribe_to_updates: false,
   });
 
   const handleChange = (field: keyof Organization, value: any) => {
@@ -68,11 +69,11 @@ export default function OnboardingPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            
+
             {/* Basic Info */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium">Essential Details</h3>
-              
+
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Organization Name</label>
                 <Input
@@ -113,14 +114,14 @@ export default function OnboardingPage() {
                   className="min-h-[100px]"
                 />
               </div>
-              
+
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Organization Website</label>
                 <Input
-                    type="url"
-                    value={formData.organization_website}
-                    onChange={(e) => handleChange("organization_website", e.target.value)}
-                    placeholder="https://example.org"
+                  type="text"
+                  value={formData.organization_website}
+                  onChange={(e) => handleChange("organization_website", e.target.value)}
+                  placeholder="https://example.org"
                 />
               </div>
             </div>
@@ -188,7 +189,7 @@ export default function OnboardingPage() {
             {/* Contact */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium">Primary Contact</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">Name</label>
@@ -208,6 +209,61 @@ export default function OnboardingPage() {
                     onChange={(e) => handleChange("contact_email", e.target.value)}
                     placeholder="john@example.org"
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Subscription Preference */}
+            {/* Subscription Preference - AI Themed Toggle */}
+            <div
+              className={`
+                relative border rounded-xl p-1 transition-all duration-300 cursor-pointer group overflow-hidden
+                ${formData.subscribe_to_updates
+                  ? "border-transparent"
+                  : "border-border hover:border-primary/50"}
+              `}
+              onClick={() => handleChange("subscribe_to_updates", !formData.subscribe_to_updates)}
+            >
+              {/* Gradient Border Background (visible via padding when active) */}
+              {formData.subscribe_to_updates && (
+                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 animate-gradient-xy" />
+              )}
+
+              {/* Inner Content Card */}
+              <div className={`
+                relative h-full w-full rounded-[10px] p-4 flex items-start space-x-4 transition-colors duration-300
+                ${formData.subscribe_to_updates ? "bg-background/95 backdrop-blur-sm" : "bg-card hover:bg-muted/50"}
+              `}>
+                <div className={`
+                  p-2.5 rounded-full transition-all duration-500 relative
+                  ${formData.subscribe_to_updates ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-purple-500/25" : "bg-muted text-muted-foreground"}
+                `}>
+                  {formData.subscribe_to_updates ? <Sparkles className="h-6 w-6 animate-pulse" /> : <Bell className="h-6 w-6" />}
+                </div>
+
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className={`font-bold text-lg transition-all duration-300 ${formData.subscribe_to_updates
+                      ? "text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600"
+                      : "text-foreground"
+                      }`}>
+                      Enable Grant Radar AI
+                    </span>
+
+                    {/* AI Toggle Switch */}
+                    <div className={`
+                      w-14 h-8 rounded-full p-1 transition-all duration-500 ease-spring
+                      ${formData.subscribe_to_updates ? "bg-gradient-to-r from-indigo-500 to-purple-600 shadow-inner" : "bg-muted-foreground/30"}
+                    `}>
+                      <div className={`
+                        w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-500 ease-out-back
+                        ${formData.subscribe_to_updates ? "translate-x-6" : "translate-x-0"}
+                      `} />
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground pr-8">
+                    Our AI agents will continuously scan for grants matching your profile and notify you instantly.
+                  </p>
                 </div>
               </div>
             </div>
