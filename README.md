@@ -98,6 +98,31 @@ grant-radar-sg/
 └── README.md
 ```
 
+## 🔥 Firebase Setup
+
+### 1. Create Project
+1.  Go to the [Firebase Console](https://console.firebase.google.com/).
+2.  Create a new project (or use an existing GCP project).
+
+### 2. Enable Authentication
+1.  Navigate to **Build** > **Authentication**.
+2.  Click **Get Started**.
+3.  On the **Sign-in method** tab, enable **Google**.
+4.  Configure the support email and save.
+
+### 3. Get Frontend Config
+1.  Go to **Project Settings** (gear icon).
+2.  Under **Your apps**, click the web icon (`</>`) to register a web app.
+3.  Copy the `firebaseConfig` object values.
+4.  Populate your `frontend/.env.local` file (as shown in [Environment Setup](#1-environment-setup)).
+
+### 4. Backend Verification
+The backend uses `firebase-admin` to verify tokens.
+-   **Production**: It automatically uses the GCP project's default credentials (ADC).
+-   **Local**: Ensure your `GOOGLE_CLOUD_PROJECT` environment variable matches your Firebase project ID.
+
+---
+
 ## 🧠 AI & Search Logic
 
 1.  **Ingestion**: Grants are scraped and chunks of text are embedded using user Google's `text-embedding-004`.
@@ -149,6 +174,49 @@ RESEND_API_KEY=re_123456789...
 The email logic is encapsulated in `email_service.py`:
 -   **`send_grant_notification`**: Generates a personalized HTML email listing new matching grants.
 -   **Template**: Includes grant details (Agency, Funding Amout, Strategy) and a direct link to apply.
+
+
+## ☁️ AlloyDB Setup (Production Database)
+
+The application uses **Google Cloud AlloyDB for PostgreSQL** for vector storage (`pgvector`) and high-performance querying.
+
+### 1. Enable APIs
+Ensure the following APIs are enabled in your GCP project:
+-   AlloyDB API
+-   Compute Engine API
+-   Service Networking API
+
+### 2. Create Cluster & Instance
+1.  Go to the AlloyDB console.
+2.  Create a Cluster (e.g., `grants-cluster`) in `asia-southeast1`.
+3.  Create a Primary Instance (e.g., `grants-instance`).
+4.  **Important**: Set a password for the `postgres` user.
+
+### 3. Configure Database
+You must enable `pgvector` on the instance. Connect via Cloud Shell or a VM in the same VPC:
+```sql
+CREATE EXTENSION vector;
+```
+*(Note: The application attempts to run this on startup, but it's safer to ensure it manually).*
+
+### 4. Application Configuration
+Set the following environment variables in `.env` or Docker:
+
+```bash
+ALLOYDB_REGION=asia-southeast1
+ALLOYDB_CLUSTER=grants-cluster
+ALLOYDB_INSTANCE=grants-instance
+ALLOYDB_DB_USER=postgres
+ALLOYDB_DB_PASS=your-secure-password
+ALLOYDB_DB_NAME=postgres  # or your custom DB name
+```
+
+### 5. Authentication
+The application uses the **AlloyDB Python Connector**, which requires IAM authentication.
+-   **Local**: `gcloud auth application-default login`
+-   **Production (Cloud Run)**: Ensure the service account has the **AlloyDB Client** role.
+
+---
 
 ## 📄 License
 [MIT](LICENSE)
