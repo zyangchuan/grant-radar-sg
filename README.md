@@ -104,5 +104,51 @@ grant-radar-sg/
 2.  **Vector Search**: User queries/profiles are embedded and compared against grant vectors using cosine similarity (in PostgreSQL via `pgvector`).
 3.  **Reranking/Evaluation**: Top candidate grants are sent to Gemini Pro with the user's specific context to generate a qualitative "Relevance Score" and explanation.
 
-## 📄 License
+## � Ingestion Engine (Firebase Functions)
+
+The ingestion engine is a Cloud Function that scrapes government portals (specifically `oursggrants.gov.sg`) to keep the database up-to-date.
+
+### Deployment 
+The function is located in `api/ingestion-engine` and deployed via Firebase CLI.
+
+```bash
+# Login to Firebase
+firebase login
+
+# Deploy only the functions
+firebase deploy --only functions
+```
+
+### Architecture
+-   **Trigger**:
+    -   **Scheduled**: Runs automatically everyday at 8:00 AM SGT via `scheduler_fn`.
+    -   **HTTP**: Can be manually triggered via HTTP request for testing/on-demand updates.
+-   **Logic**:
+    1.  Fetches latest grant metadata from source API.
+    2.  Compares against existing database records.
+    3.  **Fast Path**: strict status updates (Open/Closed) for existing grants.
+    4.  **Slow Path**: New grants are fully ingested, processed by Gemini for metadata (strategies, intent), and embedded into `pgvector`.
+    5.  **Notification**: Triggers email alerts for relevant subscribers.
+
+---
+
+## 📧 Email Notifications Setup
+
+We use [Resend](https://resend.com) to deliver transactional emails (Grant Alerts).
+
+### Configuration
+1.  Get an API Key from Resend.
+2.  Verify a sending domain (e.g., `grantradarsg2026.site`).
+3.  Add the key to your environment variables (`Dockerfile`, `docker-compose.yml`, and `.env`):
+
+```bash
+RESEND_API_KEY=re_123456789...
+```
+
+### Usage in Code
+The email logic is encapsulated in `email_service.py`:
+-   **`send_grant_notification`**: Generates a personalized HTML email listing new matching grants.
+-   **Template**: Includes grant details (Agency, Funding Amout, Strategy) and a direct link to apply.
+
+## �📄 License
 [MIT](LICENSE)
