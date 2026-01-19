@@ -150,5 +150,5 @@ The email logic is encapsulated in `email_service.py`:
 -   **`send_grant_notification`**: Generates a personalized HTML email listing new matching grants.
 -   **Template**: Includes grant details (Agency, Funding Amout, Strategy) and a direct link to apply.
 
-## �📄 License
+## 📄 License
 [MIT](LICENSE)
