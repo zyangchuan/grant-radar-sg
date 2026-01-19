@@ -1,17 +1,27 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fetchAllGrants } from "@/lib/api";
-import { ExternalLink, Search, DollarSign, Building2 } from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
+import { ExternalLink, Search, DollarSign, Building2, LogOut, User } from "lucide-react";
 
 export default function GrantsPage() {
+    const router = useRouter();
+    const { logout } = useAuth();
     const [grants, setGrants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const handleLogout = async () => {
+        await logout();
+        window.location.href = "/login";
+    };
+
 
     useEffect(() => {
         async function loadGrants() {
@@ -38,14 +48,25 @@ export default function GrantsPage() {
                             {loading ? "Loading..." : `${grants.length} grants available`}
                         </p>
                     </div>
-                    <Link href="/">
-                        <Button variant="outline" className="gap-2">
-                            <Search className="w-4 h-4" />
-                            AI-Powered Search
+                    <div className="flex items-center gap-2">
+                        <Link href="/">
+                            <Button variant="outline" className="gap-2">
+                                <Search className="w-4 h-4" />
+                                AI-Powered Search
+                            </Button>
+                        </Link>
+                        <Link href="/profile">
+                            <Button variant="ghost" size="icon">
+                                <User className="w-4 h-4" />
+                            </Button>
+                        </Link>
+                        <Button variant="ghost" size="icon" onClick={handleLogout}>
+                            <LogOut className="w-4 h-4" />
                         </Button>
-                    </Link>
+                    </div>
                 </div>
             </header>
+
 
             {/* Error State */}
             {error && (

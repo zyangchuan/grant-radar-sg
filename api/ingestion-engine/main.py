@@ -103,6 +103,37 @@ def determine_is_open_from_source(grant_data):
     # Default to open if no data
     return True
 
+def extract_deadline(closing_dates):
+    """
+    Extracts the best deadline string from closing_dates.
+    Returns a formatted deadline or 'Open' if no specific date.
+    """
+    if not closing_dates:
+        return "Open"
+    
+    # Look for actual date values (not "Open for Applications" or "Applications closed")
+    for key in ['organisation', 'individual']:
+        value = closing_dates.get(key, "")
+        if value and isinstance(value, str):
+            val_lower = value.lower()
+            if "open" in val_lower:
+                continue  # Skip "Open for Applications"
+            if "closed" in val_lower:
+                return "Closed"
+            # If it looks like a date, return it
+            if any(month in val_lower for month in ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']):
+                return value
+            # Check for numeric date patterns
+            if any(c.isdigit() for c in value):
+                return value
+    
+    # If all values say "open", return "Open"
+    for value in closing_dates.values():
+        if value and "open" in str(value).lower():
+            return "Open"
+    
+    return "Open"
+
 def is_recently_updated(updated_at_str, days=14):
     """
     Check if the grant was updated within the last N days.
@@ -188,11 +219,13 @@ def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
         is_open = determine_is_open_from_source(g)
         
         if gid in existing_grant_ids:
-            # Grant exists - just update is_open status (fast path)
+            # Grant exists - just update is_open status and deadline (fast path)
+            closing_dates = g.get("closing_dates", {})
+            deadline = extract_deadline(closing_dates)
             grants_to_update_status.append({
                 "id": gid,
                 "is_open": is_open,
-                "closing_dates": g.get("closing_dates")
+                "deadline": deadline
             })
         else:
             # New grant - needs full processing
@@ -212,7 +245,7 @@ def trigger_ingestion(req: https_fn.Request) -> https_fn.Response:
                 stmt = (
                     Grant.__table__.update()
                     .where(Grant.id == g["id"])
-                    .values(is_open=g["is_open"])
+                    .values(is_open=g["is_open"], deadline=g["deadline"])
                 )
                 session.exec(stmt)
             session.commit()

@@ -13,7 +13,7 @@ services:
       - PORT=8080
       - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
       - GOOGLE_CLOUD_PROJECT=${GCP_PROJECT_ID:-grantsmapsg}
-      - RESEND_API_KEY=${RESEND_API_KEY}
+
     volumes:
       - ./grant-query:/app
       - ${HOME}/.config/gcloud:/root/.config/gcloud:ro

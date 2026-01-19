@@ -31,7 +31,8 @@ export interface Grant {
 }
 
 export interface StreamProgress {
-    status: 'initializing' | 'analyzing' | 'searching' | 'evaluating' | 'finalizing' | 'complete' | 'error';
+    status?: 'initializing' | 'analyzing' | 'searching' | 'evaluating' | 'finalizing' | 'complete' | 'error';
+    stage?: 'initializing' | 'analyzing' | 'searching' | 'evaluating' | 'finalizing' | 'complete' | 'error';
     message: string;
     progress: number;
     data?: {
@@ -39,6 +40,7 @@ export interface StreamProgress {
         grants: any[]; // Raw API response grants
     };
 }
+
 
 export async function searchGrantsStream(
     requirements: SearchRequirements,
@@ -112,36 +114,51 @@ export interface Organization {
     id?: number;
     firebase_uid?: string;
     organization_name: string;
-    registration_id: string;
-    mailing_address: string;
     mission_summary: string;
     primary_focus_area: string;
     primary_contact_name: string;
     contact_email: string;
-    organization_website?: string;
     total_staff_volunteers: number;
     annual_budget_range: string;
     subscribe_to_updates?: boolean;
 }
 
-export async function getOrganization(): Promise<Organization | null> {
+
+export async function getOrganization(userOverride?: { getIdToken: () => Promise<string> }): Promise<Organization | null> {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const token = await auth.currentUser?.getIdToken();
 
-    if (!token) return null;
+    // Use provided user or fall back to auth.currentUser
+    const tokenSource = userOverride || auth.currentUser;
+    if (!tokenSource) {
+        console.log("[getOrganization] No user available for token");
+        return null;
+    }
 
+    const token = await tokenSource.getIdToken();
+    if (!token) {
+        console.log("[getOrganization] Failed to get token");
+        return null;
+    }
+
+    console.log("[getOrganization] Fetching with token...");
     const response = await fetch(`${API_URL}/organization`, {
         headers: {
             "Authorization": `Bearer ${token}`
         }
     });
 
-    if (response.status === 404) return null;
+    if (response.status === 404) {
+        console.log("[getOrganization] 404 - no organization found");
+        return null;
+    }
     if (!response.ok) {
+        console.error("[getOrganization] API error:", response.status);
         throw new Error('Failed to fetch organization');
     }
 
-    return await response.json();
+    const org = await response.json();
+    console.log("[getOrganization] Found organization:", org?.organization_name);
+    return org;
 }
 
 export async function saveOrganization(org: Organization): Promise<Organization> {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
-import { saveOrganization, Organization } from "@/lib/api";
+import { saveOrganization, getOrganization, Organization } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,29 +15,69 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Building2, Loader2, Bell, Sparkles } from "lucide-react";
+import { Loader2, Bell, Sparkles, Lock } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { user, checkProfile } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   const [formData, setFormData] = useState<Organization>({
     organization_name: "",
-    registration_id: "",
-    mailing_address: "",
     mission_summary: "",
     primary_focus_area: "",
     primary_contact_name: "",
     contact_email: "",
-    organization_website: "",
     total_staff_volunteers: 0,
     annual_budget_range: "",
     subscribe_to_updates: false,
   });
 
+
+  // Fetch existing organization data for editing
+  useEffect(() => {
+    async function loadExistingData() {
+      if (!user) {
+        setInitialLoading(false);
+        return;
+      }
+
+      try {
+        const existingOrg = await getOrganization();
+        if (existingOrg) {
+          setFormData({
+            ...existingOrg,
+            subscribe_to_updates: false, // Reset this for each session
+          });
+          setIsEditing(true);
+        } else {
+          // New user - just populate email
+          setFormData(prev => ({
+            ...prev,
+            contact_email: user.email || ""
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to load organization", err);
+        // Still populate email for new users
+        setFormData(prev => ({
+          ...prev,
+          contact_email: user.email || ""
+        }));
+      } finally {
+        setInitialLoading(false);
+      }
+    }
+
+    loadExistingData();
+  }, [user]);
+
   const handleChange = (field: keyof Organization, value: any) => {
+    // Prevent changing email if it's from Firebase
+    if (field === "contact_email" && user?.email) return;
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -58,13 +98,25 @@ export default function OnboardingPage() {
     }
   };
 
+  if (initialLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-10 px-4 max-w-3xl">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Complete Your Profile</CardTitle>
+          <CardTitle className="text-2xl">
+            {isEditing ? "Edit Your Profile" : "Complete Your Profile"}
+          </CardTitle>
           <CardDescription>
-            Tell us about your organization to get personalized grant recommendations.
+            {isEditing
+              ? "Update your organization details below."
+              : "Tell us about your organization to get personalized grant recommendations."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -85,26 +137,6 @@ export default function OnboardingPage() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Registration ID (UEN/Tax ID)</label>
-                <Input
-                  required
-                  value={formData.registration_id}
-                  onChange={(e) => handleChange("registration_id", e.target.value)}
-                  placeholder="e.g. T12SS0001A"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Mailing Address</label>
-                <Textarea
-                  required
-                  value={formData.mailing_address}
-                  onChange={(e) => handleChange("mailing_address", e.target.value)}
-                  placeholder="123 Charity Lane, Singapore 123456"
-                />
-              </div>
-
-              <div className="grid gap-2">
                 <label className="text-sm font-medium">Mission Summary</label>
                 <Textarea
                   required
@@ -112,16 +144,6 @@ export default function OnboardingPage() {
                   onChange={(e) => handleChange("mission_summary", e.target.value)}
                   placeholder="Briefly describe your organization's mission..."
                   className="min-h-[100px]"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Organization Website</label>
-                <Input
-                  type="text"
-                  value={formData.organization_website}
-                  onChange={(e) => handleChange("organization_website", e.target.value)}
-                  placeholder="https://example.org"
                 />
               </div>
             </div>
@@ -160,7 +182,7 @@ export default function OnboardingPage() {
                     required
                     min={0}
                     value={formData.total_staff_volunteers || ""}
-                    onChange={(e) => handleChange("total_staff_volunteers", parseInt(e.target.value))}
+                    onChange={(e) => handleChange("total_staff_volunteers", parseInt(e.target.value) || 0)}
                     placeholder="0"
                   />
                 </div>
@@ -201,19 +223,28 @@ export default function OnboardingPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <label className="text-sm font-medium">Email</label>
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    Email
+                    {user?.email && <Lock className="h-3 w-3 text-muted-foreground" />}
+                  </label>
                   <Input
                     required
                     type="email"
                     value={formData.contact_email}
                     onChange={(e) => handleChange("contact_email", e.target.value)}
                     placeholder="john@example.org"
+                    disabled={!!user?.email}
+                    className={user?.email ? "bg-muted cursor-not-allowed" : ""}
                   />
+                  {user?.email && (
+                    <p className="text-xs text-muted-foreground">
+                      Email is linked to your Google account
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Subscription Preference */}
             {/* Subscription Preference - AI Themed Toggle */}
             <div
               className={`
@@ -272,7 +303,7 @@ export default function OnboardingPage() {
 
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save & Continue
+              {isEditing ? "Save Changes" : "Save & Continue"}
             </Button>
           </form>
         </CardContent>

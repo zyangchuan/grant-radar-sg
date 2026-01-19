@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, AsyncGenerator
 import json
 import asyncio
+import os
 from datetime import datetime
 
 # Import our AI service
@@ -85,13 +86,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# CORS: Use env var for production, allow all for development
+cors_origins = os.getenv("CORS_ORIGINS", "*")
+if cors_origins == "*":
+    allowed_origins = ["*"]
+else:
+    allowed_origins = [origin.strip() for origin in cors_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.on_event("startup")
 def on_startup():
@@ -146,18 +155,6 @@ async def list_grants(current_user: dict = Depends(get_current_user)):
                 } 
                 for g in results
             ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/organization", response_model=Optional[Organization])
-async def get_organization(current_user: dict = Depends(get_current_user)):
-    """Get the organization profile for the current user."""
-    try:
-        firebase_uid = current_user['uid']
-        with get_session() as session:
-            statement = select(Organization).where(Organization.firebase_uid == firebase_uid)
-            org = session.exec(statement).first()
-            return org
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -404,16 +401,14 @@ class OrganizationInput(BaseModel):
     This is a plain Pydantic model (not SQLModel) to avoid deepcopy issues.
     """
     organization_name: str
-    registration_id: str
-    mailing_address: str
     mission_summary: str
     primary_focus_area: str
     primary_contact_name: str
     contact_email: str
-    organization_website: Optional[str] = None
     total_staff_volunteers: int
     annual_budget_range: str
     subscribe_to_updates: bool = False
+
 
 @app.get("/organization", response_model=Optional[Organization])
 async def get_organization(current_user: dict = Depends(get_current_user)):

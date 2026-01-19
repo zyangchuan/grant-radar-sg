@@ -27,6 +27,8 @@ class Grant(SQLModel, table=True):
     
     # --- STATUS ---
     is_open: bool = Field(default=True, index=True) # Derived from closing_dates
+    deadline: Optional[str] = Field(default=None) # e.g. "31 March 2026" or "Open"
+
     
     # --- INTELLIGENCE (For Display & Search) ---
     strategic_intent: Optional[str] = Field(sa_column=Column(TEXT), default=None) # "To boost digital adoption..."

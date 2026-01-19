@@ -27,6 +27,7 @@ class Grant(SQLModel, table=True):
     
     # --- STATUS ---
     is_open: bool = Field(default=True, index=True) # Derived from closing_dates
+    deadline: Optional[str] = Field(default=None) # e.g. "31 March 2026" or "Open"
     
     # --- INTELLIGENCE (For Display & Search) ---
     strategic_intent: Optional[str] = Field(sa_column=Column(TEXT), default=None) # "To boost digital adoption..."
@@ -56,12 +57,10 @@ class Organization(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     firebase_uid: Optional[str] = Field(default=None, index=True, unique=True)
     organization_name: str
-    registration_id: str
-    mailing_address: str
     mission_summary: str = Field(sa_column=Column(TEXT))
     primary_focus_area: str
     primary_contact_name: str
     contact_email: str
-    organization_website: Optional[str] = None
     total_staff_volunteers: int
     annual_budget_range: str
+

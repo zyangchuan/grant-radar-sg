@@ -5,6 +5,7 @@ channels:
 dependencies:
   - python=3.11
   - sqlmodel
+  - sqlalchemy
   - pg8000
   - python-multipart
   - python-dotenv
@@ -17,3 +18,4 @@ dependencies:
     - google-genai
     - functions-framework
     - pgvector
+    - resend

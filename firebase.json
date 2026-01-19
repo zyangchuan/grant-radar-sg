@@ -22,11 +22,9 @@
             {
                 "source": "/api/**",
                 "function": "trigger_ingestion"
-            },
-            {
-                "source": "**",
-                "destination": "/index.html"
             }
-        ]
+        ],
+        "cleanUrls": true,
+        "trailingSlash": false
     }
 }

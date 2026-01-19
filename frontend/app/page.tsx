@@ -16,12 +16,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sparkles, ArrowRight, DollarSign } from "lucide-react";
-import { auth } from "@/lib/firebase";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function Home() {
   const router = useRouter();
+  const { logout } = useAuth();
   const [query, setQuery] = useState(""); // This IS "Scope of Grant"
-  const [issueArea, setIssueArea] = useState("Environmental Sustainability"); // Default based on user prompt example
+
+  const [issueArea, setIssueArea] = useState("");
+
   const [funding, setFunding] = useState("");
   const [kpis, setKpis] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -69,9 +72,21 @@ export default function Home() {
             Profile
           </Button>
         </Link>
-        <Button variant="outline" onClick={() => auth.signOut()}>
+        <button
+          className="px-4 py-2 text-sm border rounded-md hover:bg-gray-100"
+          onClick={() => {
+            logout().then(() => {
+              window.location.href = "/login";
+            });
+          }}>
           Sign Out
-        </Button>
+        </button>
+
+
+
+
+
+
       </div>
 
       <motion.div
@@ -108,7 +123,7 @@ export default function Home() {
             <label className="text-sm font-medium leading-none">Scope of Grant</label>
             <div className="relative">
               <Textarea
-                placeholder="e.g., community projects focused on reducing plastic waste and promoting recycling"
+                placeholder="e.g. community projects focused on reducing plastic waste and promoting recycling"
                 className="min-h-[120px] resize-none text-base bg-background/50"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

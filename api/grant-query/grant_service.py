@@ -21,7 +21,7 @@ load_dotenv()
 print("[System] Initializing Gemini & AlloyDB...", flush=True)
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-3.0-flash",
+    model="gemini-3-flash-preview",
     temperature=0.0,
     timeout=60,
 )
@@ -55,7 +55,7 @@ def search_grants(query: str, limit: int = 5) -> List[Dict]:
         
         with get_session() as session:
             sql = text("""
-                SELECT id, name, agency_name, full_text_context, max_funding, application_url
+                SELECT id, name, agency_name, full_text_context, max_funding, application_url, deadline, original_url
                 FROM grants
                 WHERE is_open = TRUE
                 ORDER BY embedding <=> CAST(:vector AS vector)
@@ -65,8 +65,8 @@ def search_grants(query: str, limit: int = 5) -> List[Dict]:
             vector_str = f"[{','.join(map(str, query_vector))}]"
             results = session.execute(sql, {"vector": vector_str, "limit": limit}).fetchall()
             
-            print(f"[Search] Found {len(results)} grants", flush=True)
-            emit_progress("searching", f"✓ Found {len(results)} grants")
+            print(f"[Search] Found {len(results)} potential grants", flush=True)
+            emit_progress("searching", f"✓ Checking {len(results)} potential grants...")
             
             grants = []
             for row in results:
@@ -76,12 +76,16 @@ def search_grants(query: str, limit: int = 5) -> List[Dict]:
                     "agency": row[2] or "Unknown Agency",
                     "description": (row[3] or "")[:500],
                     "max_funding": row[4],
-                    "application_url": row[5]
+                    "application_url": row[5],
+                    "deadline": row[6] or "Open",
+                    "original_url": row[7]
                 }
                 print(f"[Search] - {grant['name']}", flush=True)
                 grants.append(grant)
             
             return grants
+
+
             
     except Exception as e:
         print(f"[Search Error] {e}", flush=True)
@@ -92,7 +96,7 @@ def evaluate_grants(grants: List[Dict], requirements: dict) -> List[Dict]:
     if not grants:
         return []
     
-    emit_progress("evaluating", f"📊 Evaluating {len(grants)} grants...")
+    emit_progress("evaluating", f"📊 Analyzing {len(grants)} grants with AI...")
     print(f"[Evaluate] Evaluating {len(grants)} grants", flush=True)
     
     # Build grants summary for Gemini
@@ -144,7 +148,27 @@ IMPORTANT:
 
     try:
         response = llm.invoke([HumanMessage(content=prompt)])
-        content = response.content.strip()
+        
+        # Handle response.content being either string or list
+        raw_content = response.content
+        print(f"[Evaluate] Raw response type: {type(raw_content)}", flush=True)
+        
+        if isinstance(raw_content, list):
+            # Extract text from list of content parts
+            content = "".join([
+                part.get("text", str(part)) if isinstance(part, dict) else str(part)
+                for part in raw_content
+            ])
+        else:
+            content = raw_content
+        
+        content = content.strip()
+        print(f"[Evaluate] Content length: {len(content)} chars", flush=True)
+        
+        # Handle empty response
+        if not content:
+            print("[Evaluate] WARNING: Empty response from LLM, using fallback", flush=True)
+            raise ValueError("Empty response from LLM")
         
         # Clean markdown if present
         if "```json" in content:
@@ -153,19 +177,41 @@ IMPORTANT:
             content = content.split("```")[1].split("```")[0].strip()
         
         evaluated = json.loads(content)
-        print(f"[Evaluate] Successfully evaluated {len(evaluated)} grants", flush=True)
-        emit_progress("evaluating", f"✓ Evaluated {len(evaluated)} grants")
+        print(f"[Evaluate] AI returned {len(evaluated)} matching grants", flush=True)
+        emit_progress("evaluating", f"✓ Found {len(evaluated)} matching grants")
+
+
+        
+        # Merge application_url, original_url and deadline from original grants into evaluated results
+        grant_app_urls = {g["id"]: g.get("application_url") for g in grants}
+        grant_original_urls = {g["id"]: g.get("original_url") for g in grants}
+        grant_deadlines = {g["id"]: g.get("deadline", "Open") for g in grants}
+        for item in evaluated:
+            gid = item.get("grant_id")
+            if gid:
+                item["application_url"] = grant_app_urls.get(gid)
+                item["original_url"] = grant_original_urls.get(gid)
+                item["details_url"] = grant_original_urls.get(gid)  # Details = info page
+                item["deadline"] = grant_deadlines.get(gid, "Open")
         
         return evaluated
+
+
         
     except Exception as e:
         print(f"[Evaluate Error] {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         # Return grants without evaluation as fallback
         return [{
             "grant_id": g["id"],
             "grant_name": g["name"],
             "agency": g["agency"],
             "funding_amount": g["max_funding"],
+            "application_url": g.get("application_url"),
+            "original_url": g.get("original_url"),
+            "details_url": g.get("original_url"),
+            "deadline": g.get("deadline", "Open"),
             "evaluation": {
                 "relevance_score": 50,
                 "overall_score": 50,
@@ -174,6 +220,8 @@ IMPORTANT:
                 "concerns": ["Manual review needed"]
             }
         } for g in grants]
+
+
 
 # ==========================================
 # PUBLIC API
