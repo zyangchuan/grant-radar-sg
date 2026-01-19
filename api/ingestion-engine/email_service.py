@@ -104,7 +104,7 @@ def send_grant_notification(
     email: str, 
     org_name: str, 
     grants: List[Dict[str, Any]],
-    from_email: str = "GrantRadarSG <onboarding@resend.dev>"
+    from_email: str = "GrantRadarSG <hello@grantradarsg2026.site>"
 ) -> bool:
     """
     Send email notification about new matching grants.
@@ -153,7 +153,7 @@ def send_test_email(email: str) -> bool:
     
     try:
         result = resend.Emails.send({
-            "from": "GrantRadarSG <onboarding@resend.dev>",
+            "from": "GrantRadarSG <hello@grantradarsg2026.site>",
             "to": email,
             "subject": "✅ GrantRadarSG - Email Notifications Activated!",
             "html": """

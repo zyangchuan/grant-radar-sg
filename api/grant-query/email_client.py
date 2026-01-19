@@ -15,7 +15,7 @@ def send_welcome_email(email: str, org_name: str) -> bool:
     try:
         print(f"[Email] Sending welcome email to {email}")
         result = resend.Emails.send({
-            "from": "GrantRadarSG <onboarding@resend.dev>",
+            "from": "GrantRadarSG <hello@grantradarsg2026.site>",
             "to": email,
             "subject": "✅ GrantRadarSG - Alerts Activated!",
             "html": f"""
