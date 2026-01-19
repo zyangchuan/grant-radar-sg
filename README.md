@@ -104,7 +104,7 @@ grant-radar-sg/
 2.  **Vector Search**: User queries/profiles are embedded and compared against grant vectors using cosine similarity (in PostgreSQL via `pgvector`).
 3.  **Reranking/Evaluation**: Top candidate grants are sent to Gemini Pro with the user's specific context to generate a qualitative "Relevance Score" and explanation.
 
-## � Ingestion Engine (Firebase Functions)
+## ⚙️ Ingestion Engine (Firebase Functions)
 
 The ingestion engine is a Cloud Function that scrapes government portals (specifically `oursggrants.gov.sg`) to keep the database up-to-date.
 
