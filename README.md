@@ -8,7 +8,7 @@ How might non-profit organisations “pull” information about grants from OurS
 **Grant Radar SG** is an AI-powered platform designed to help Singaporean Non-Profit Organizations (NPOs) and SMEs automatically discover, match, and apply for relevant government grants.
 
 Instead of manually searching through hundreds of schemes, users create an organization profile, and our AI agents continuously scan and alert them to opportunities that match their specific mission, KPIs, and funding needs.
-
+Try out our deploy site [here](https://grantradarsg2026.site)
 ## 🚀 Features
 
 -   **AI Semantic Search**: Find grants using natural language (e.g., "funding for elderly digitalization projects") rather than keyword matching.
