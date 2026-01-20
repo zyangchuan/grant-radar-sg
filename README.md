@@ -10,7 +10,7 @@ Instead of manually searching through hundreds of schemes, users create an organ
 -   **Smart Matching**: Automatically matches your organization's profile (sector, size, mission) against grant eligibility criteria.
 -   **Real-time Streaming**: Search results are streamed in real-time as AI agents evaluate each grant.
 -   **Organization Profiles**: persistent profiles that allow for "passive" grant hunting.
--   **Automated Ingestion**: A dedicated engine that scrapes and indexes grant information from official sources.
+-   **Automated Ingestion**: A dedicated engine that scrapes and indexes grant information from official sources, with automated routing depending on context
 
 ## 🛠️ Technology Stack
 
@@ -25,7 +25,7 @@ Instead of manually searching through hundreds of schemes, users create an organ
 -   **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
 -   **Database**: PostgreSQL with `pgvector` (via Google AlloyDB / Local Docker)
 -   **ORM**: SQLModel
--   **AI/LLM**: Google Gemini Pro (via LangChain)
+-   **AI/LLM**: Google Gemini (via LangChain)
 -   **Models**: Pydantic for schema validation
 
 ### Ingestion Engine
