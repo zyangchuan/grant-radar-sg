@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Bell, Sparkles, Lock } from "lucide-react";
+import { Loader2, Bell, Sparkles, Lock, ArrowLeft } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -108,6 +108,14 @@ export default function OnboardingPage() {
 
   return (
     <div className="container mx-auto py-10 px-4 max-w-3xl">
+      {isEditing && (
+        <div className="mb-6">
+          <Button variant="ghost" className="pl-0 hover:pl-2 transition-all" onClick={() => router.push("/profile")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Profile
+          </Button>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">

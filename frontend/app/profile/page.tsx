@@ -6,7 +6,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { getOrganization, Organization } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Building, Pencil, Mail, Globe, Users, DollarSign, Target, LogOut } from "lucide-react";
+import { Loader2, Building, Pencil, Mail, Globe, Users, DollarSign, Target, LogOut, ArrowLeft } from "lucide-react";
 
 import Link from "next/link";
 
@@ -64,6 +64,13 @@ export default function ProfilePage() {
 
   return (
     <div className="container mx-auto py-10 px-4 max-w-4xl">
+      <div className="mb-6">
+        <Button variant="ghost" className="pl-0 hover:pl-2 transition-all" onClick={() => router.push("/")}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Search
+        </Button>
+      </div>
+
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Organization Profile</h1>
         <div className="flex gap-2">

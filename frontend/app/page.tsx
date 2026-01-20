@@ -65,29 +65,7 @@ export default function Home() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/5 rounded-full blur-[100px]" />
       </div>
 
-      <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-        <Link href="/profile">
-          <Button variant="ghost">
-            <Sparkles className="mr-2 h-4 w-4" />
-            Profile
-          </Button>
-        </Link>
-        <button
-          className="px-4 py-2 text-sm border rounded-md hover:bg-gray-100"
-          onClick={() => {
-            logout().then(() => {
-              window.location.href = "/login";
-            });
-          }}>
-          Sign Out
-        </button>
 
-
-
-
-
-
-      </div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -177,10 +155,11 @@ export default function Home() {
           <div className="space-y-3">
             <Button
               size="lg"
-              className="w-full rounded-lg h-12 text-md gap-2 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all font-semibold"
+              className="w-full rounded-lg h-12 text-md gap-2 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all font-semibold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white border-0 hover:opacity-90"
               onClick={handleSearch}
               disabled={!query}
             >
+              <Sparkles className="h-4 w-4" />
               Search Grants
             </Button>
             <div className="grid grid-cols-1 gap-3">
