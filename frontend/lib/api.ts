@@ -64,21 +64,52 @@ export async function searchGrantsStream(
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = ''; // Buffer for incomplete chunks
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+            // Append new data to buffer
+            buffer += decoder.decode(value, { stream: true });
 
+            // Process complete lines (ending with \n\n for SSE)
+            const parts = buffer.split('\n\n');
+
+            // Keep the last part in buffer (might be incomplete)
+            buffer = parts.pop() || '';
+
+            for (const part of parts) {
+                const lines = part.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.slice(6).trim();
+                            if (jsonStr) {
+                                const data = JSON.parse(jsonStr);
+                                onProgress(data);
+                            }
+                        } catch (e) {
+                            console.error("Error parsing stream chunk:", line, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process any remaining buffer content
+        if (buffer.trim()) {
+            const lines = buffer.split('\n');
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
                     try {
-                        const data = JSON.parse(line.slice(6));
-                        onProgress(data);
+                        const jsonStr = line.slice(6).trim();
+                        if (jsonStr) {
+                            const data = JSON.parse(jsonStr);
+                            onProgress(data);
+                        }
                     } catch (e) {
-                        console.error("Error parsing stream chunk", e);
+                        console.error("Error parsing final chunk:", line, e);
                     }
                 }
             }

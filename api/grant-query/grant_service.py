@@ -21,9 +21,9 @@ load_dotenv()
 print("[System] Initializing Gemini & AlloyDB...", flush=True)
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model="gemini-2.5-flash",
     temperature=0.0,
-    timeout=60,
+    timeout=120,
 )
 
 embeddings = GoogleGenerativeAIEmbeddings(

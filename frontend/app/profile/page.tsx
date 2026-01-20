@@ -28,9 +28,11 @@ export default function ProfilePage() {
       // Wait for auth to finish loading
       if (authLoading) return;
 
-      // AuthGuard handles the redirect to /login if not authenticated
-      // So if we get here without a user, just return (AuthGuard will redirect)
-      if (!user) return;
+      // If no user, redirect to login
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
       try {
         const data = await getOrganization();

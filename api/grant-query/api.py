@@ -104,7 +104,13 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
-    init_db()
+    try:
+        print("[Startup] Initializing database...", flush=True)
+        init_db()
+        print("[Startup] Database initialized successfully!", flush=True)
+    except Exception as e:
+        print(f"[Startup] WARNING: Database initialization failed: {e}", flush=True)
+        print("[Startup] App will start but database features may fail.", flush=True)
 
 # ==========================================
 # API ENDPOINTS
