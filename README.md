@@ -1,8 +1,10 @@
 # Grant Radar SG 🇸🇬
 
 ## Hack4Good 2026 Submission
-**Problem statement:** How might non-profit organisations “pull” information about grants from OurSG grants portal that are relevant to them according to key criteria including issue area, scope of grant, KPIs, funding quantum, application due date, etcs. so that they can strengthen their financial sustainability?
+### Problem statement
+How might non-profit organisations “pull” information about grants from OurSG grants portal that are relevant to them according to key criteria including issue area, scope of grant, KPIs, funding quantum, application due date, etcs. so that they can strengthen their financial sustainability?
 
+### Project description
 **Grant Radar SG** is an AI-powered platform designed to help Singaporean Non-Profit Organizations (NPOs) and SMEs automatically discover, match, and apply for relevant government grants.
 
 Instead of manually searching through hundreds of schemes, users create an organization profile, and our AI agents continuously scan and alert them to opportunities that match their specific mission, KPIs, and funding needs.
