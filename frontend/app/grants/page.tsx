@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fetchAllGrants } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
-import { ExternalLink, Search, DollarSign, Building2, LogOut, User } from "lucide-react";
+import { ExternalLink, DollarSign, Building2 } from "lucide-react";
 
 export default function GrantsPage() {
     const router = useRouter();
@@ -47,22 +47,6 @@ export default function GrantsPage() {
                         <p className="text-muted-foreground mt-1">
                             {loading ? "Loading..." : `${grants.length} grants available`}
                         </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Link href="/">
-                            <Button variant="outline" className="gap-2">
-                                <Search className="w-4 h-4" />
-                                AI-Powered Search
-                            </Button>
-                        </Link>
-                        <Link href="/profile">
-                            <Button variant="ghost" size="icon">
-                                <User className="w-4 h-4" />
-                            </Button>
-                        </Link>
-                        <Button variant="ghost" size="icon" onClick={handleLogout}>
-                            <LogOut className="w-4 h-4" />
-                        </Button>
                     </div>
                 </div>
             </header>

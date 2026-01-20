@@ -18,7 +18,7 @@ export function Navbar() {
   if (pathname === "/login" || pathname === "/onboarding") return null;
 
   const navItems = [
-    { href: "/", label: "Search", icon: Sparkles },
+    { href: "/", label: "AI Powered Search", icon: Sparkles },
     { href: "/grants", label: "All Grants", icon: FileText },
     { href: "/profile", label: "Profile", icon: User },
   ];
